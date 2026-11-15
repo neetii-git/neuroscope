@@ -36,11 +36,12 @@ except Exception:  # pragma: no cover
     HAVE_SKIMAGE = False
 
 # ------------------------------------------------------------------------------------------------
-LABEL_RGB = {1: (123, 44, 191), 2: (46, 125, 50), 3: (224, 176, 70)}          # core purple, edema forest green, enhancing sand gold
+LABEL_RGB = {1: (255, 51, 51), 2: (51, 204, 51), 3: (255, 217, 26)}          # core red, edema green, enhancing yellow
 LABEL_NAMES = {0: "background", 1: "necrotic / non-enhancing core", 2: "edema", 3: "enhancing tumour"}
 REGION_NAMES = ["Whole tumour", "Tumour core", "Enhancing tumour"]
 REGION_KEYS = ["WT_ml", "TC_ml", "ET_ml"]
-REGION_HEX = ["#2E7D32", "#7B2CBF", "#C9962E"]
+REGION_HEX = ["#2ca02c", "#d62728", "#ffbf00"]
+SCENE_BG = "#0B1220"
 MOD_LABEL = {"t1": "T1", "t1ce": "T1ce (contrast)", "t2": "T2", "flair": "FLAIR"}
 LOG2 = float(np.log(2))
 PLOT_BG = "#EADFC9"
@@ -173,13 +174,13 @@ def compose_rgb(base, labels, ent, show_seg, show_unc, seg_alpha, unc_alpha, gt=
     if show_unc:
         e = np.clip(ent / LOG2, 0, 1)
         w = e[..., None] * unc_alpha
-        rgb = rgb * (1 - w) + np.array([0.54, 0.17, 0.89]) * w   # electric purple glow
+        rgb = rgb * (1 - w) + np.array([0.54, 0.17, 0.89]) * w   # purple glow for uncertainty
     if show_seg:
         for lab, col in LABEL_RGB.items():
             m = labels == lab
             rgb[m] = rgb[m] * (1 - seg_alpha) + np.array(col) / 255.0 * seg_alpha
     if gt is not None:
-        rgb[contour(gt)] = (0.95, 0.90, 0.75)   # sand contour
+        rgb[contour(gt)] = (0.2, 0.9, 1.0)   # cyan contour
     return (np.transpose(rgb, (1, 0, 2))[::-1] * 255).astype(np.uint8)
 
 
@@ -222,13 +223,13 @@ def fig_3d(res, z_axial: int, show: Dict[str, bool], opacity: float, show_plane:
     if HAVE_SKIMAGE and meshes is not None:
         if show.get("brain") and meshes["brain"] is not None:
             v, f = meshes["brain"]
-            fig.add_trace(go.Mesh3d(x=v[:, 2], y=v[:, 1], z=v[:, 0], i=f[:, 0], j=f[:, 1], k=f[:, 2], color="#B8A98A", opacity=0.08,
+            fig.add_trace(go.Mesh3d(x=v[:, 2], y=v[:, 1], z=v[:, 0], i=f[:, 0], j=f[:, 1], k=f[:, 2], color="#94A3B8", opacity=0.07,
                                     name="Brain surface", showlegend=True, hoverinfo="skip", lighting=dict(ambient=0.6)))
         for i, (nm, col) in enumerate(zip(REGION_NAMES, REGION_HEX)):
             if show.get(nm) and meshes["regions"][i] is not None:
                 v, f = meshes["regions"][i]
                 fig.add_trace(go.Mesh3d(x=v[:, 2], y=v[:, 1], z=v[:, 0], i=f[:, 0], j=f[:, 1], k=f[:, 2], color=col,
-                                        opacity=(opacity * 0.45) if i == 0 else opacity,
+                                        opacity=(opacity * 0.4) if i == 0 else opacity * 0.7,
                                         name=f"{nm} ({pred.volumes_ml[REGION_KEYS[i]]:.1f} mL)", showlegend=True,
                                         hovertemplate=nm + "<extra></extra>",
                                         lighting=dict(ambient=0.45, diffuse=0.8, specular=0.25, roughness=0.6)))
@@ -242,7 +243,7 @@ def fig_3d(res, z_axial: int, show: Dict[str, bool], opacity: float, show_plane:
             D, H, W = v.shape
             zz, yy, xx = np.mgrid[0:D, 0:H, 0:W] * 2
             fig.add_trace(go.Isosurface(x=xx.flatten(), y=yy.flatten(), z=zz.flatten(), value=v.flatten(), isomin=0.5, isomax=1,
-                                        surface_count=1, opacity=opacity * (0.45 if i == 0 else 1), colorscale=[[0, col], [1, col]],
+                                        surface_count=1, opacity=opacity * (0.4 if i == 0 else 0.7), colorscale=[[0, col], [1, col]],
                                         showscale=False, name=nm, caps=dict(x_show=False, y_show=False, z_show=False)))
     if show_plane:
         sl = base_vol[z_axial]
@@ -254,10 +255,53 @@ def fig_3d(res, z_axial: int, show: Dict[str, bool], opacity: float, show_plane:
                                  showscale=False, opacity=0.95, name=f"Axial slice {z_axial}", hoverinfo="skip", showlegend=True))
     D = pred.regions.shape[1]
     fig.update_layout(scene=dict(xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False, range=[0, D]),
-                                 aspectmode="data", bgcolor=PLOT_BG, camera=dict(eye=dict(x=1.6, y=1.2, z=0.9))),
-                      legend=dict(orientation="h", y=0.0, x=0.5, xanchor="center", bgcolor="rgba(0,0,0,0)"))
-    return dark(fig, 640)
+                                 aspectmode="data", bgcolor=SCENE_BG, camera=dict(eye=dict(x=1.6, y=1.2, z=0.9))),
+                      legend=dict(orientation="h", y=0.0, x=0.5, xanchor="center", bgcolor="rgba(0,0,0,0)", font=dict(color="#E5E7EB")))
+    dark(fig, 640)
+    fig.update_layout(paper_bgcolor=SCENE_BG)
+    return fig
 
+
+
+def _norm(sl):
+    nz = sl[sl != 0]
+    lo, hi = (np.percentile(nz, [1, 99]) if nz.size else (0, 1))
+    return np.clip((sl - lo) / (hi - lo + 1e-6), 0, 1)
+
+
+@st.cache_resource(show_spinner=False)
+def fig_hero(demo_dir: str):
+    """Landing view: the example patient's MRI as three orthogonal planes inside a translucent brain. No inference."""
+    vols, _ = load_demo_case(demo_dir)
+    key = "flair" if "flair" in vols else next(k for k in vols if k != "seg")
+    v = np.asarray(vols[key], dtype=np.float32)
+    v = np.transpose(v, (2, 1, 0))  # (z, y, x)
+    mask = v > 0
+    zs = np.where(mask.any((1, 2)))[0]; ys = np.where(mask.any((0, 2)))[0]; xs = np.where(mask.any((0, 1)))[0]
+    v = v[zs[0]:zs[-1] + 1, ys[0]:ys[-1] + 1, xs[0]:xs[-1] + 1]; mask = v > 0
+    D, H, W = v.shape
+    fig = go.Figure()
+    if HAVE_SKIMAGE:
+        m = mesh(mask, 3)
+        if m is not None:
+            vv, ff = m
+            fig.add_trace(go.Mesh3d(x=vv[:, 2], y=vv[:, 1], z=vv[:, 0], i=ff[:, 0], j=ff[:, 1], k=ff[:, 2], color="#7DD3FC", opacity=0.08, hoverinfo="skip", lighting=dict(ambient=0.7)))
+    else:
+        s3 = mask[::4, ::4, ::4].astype(np.float32); d, h, w = s3.shape
+        zz, yy, xx = np.mgrid[0:d, 0:h, 0:w] * 4
+        fig.add_trace(go.Isosurface(x=xx.flatten(), y=yy.flatten(), z=zz.flatten(), value=s3.flatten(), isomin=0.5, isomax=1, surface_count=1,
+                                    opacity=0.08, colorscale=[[0, "#7DD3FC"], [1, "#7DD3FC"]], showscale=False, hoverinfo="skip", caps=dict(x_show=False, y_show=False, z_show=False)))
+    z0, y0, x0 = D // 2, H // 2, W // 2
+    gx, gy = np.meshgrid(np.arange(W), np.arange(H))
+    fig.add_trace(go.Surface(x=gx, y=gy, z=np.full((H, W), float(z0)), surfacecolor=_norm(v[z0]), colorscale="Gray", cmin=0, cmax=1, showscale=False, hoverinfo="skip"))
+    gx, gz = np.meshgrid(np.arange(W), np.arange(D))
+    fig.add_trace(go.Surface(x=gx, y=np.full((D, W), float(y0)), z=gz, surfacecolor=_norm(v[:, y0, :]), colorscale="Gray", cmin=0, cmax=1, showscale=False, hoverinfo="skip"))
+    gy, gz = np.meshgrid(np.arange(H), np.arange(D))
+    fig.add_trace(go.Surface(x=np.full((D, H), float(x0)), y=gy, z=gz, surfacecolor=_norm(v[:, :, x0]), colorscale="Gray", cmin=0, cmax=1, showscale=False, hoverinfo="skip"))
+    fig.update_layout(height=520, margin=dict(l=0, r=0, t=0, b=0), paper_bgcolor=SCENE_BG, showlegend=False,
+                      scene=dict(xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False), aspectmode="data",
+                                 bgcolor=SCENE_BG, camera=dict(eye=dict(x=1.5, y=-1.4, z=0.8))))
+    return fig
 
 # ------------------------------------------------------------------------------------------------
 # Analysis charts
@@ -431,9 +475,24 @@ sub_df = load_csv(os.path.join(results_dir, "subsets.csv"))
 hist_df = load_csv(os.path.join(os.path.dirname(os.path.abspath(ckpt_path)), "history.csv"))
 
 # ---------------- Header ----------------
-st.title("NeuroScope")
-st.markdown("Brain tumour segmentation from MRI with a built-in uncertainty estimate, so the result says when it should be checked by a specialist. "
-            "Works with any subset of the four standard sequences. Research prototype, not a medical device.")
+_landing = st.session_state.get("result") is None
+if _landing and os.path.isdir(ARGS.demo_dir):
+    hl, hr = st.columns([1, 1.25])
+    with hl:
+        st.title("NeuroScope")
+        st.markdown("Brain tumour segmentation from MRI with a built-in uncertainty estimate, so the result says when it should be checked by a specialist. "
+                    "Works with any subset of the four standard sequences. Research prototype, not a medical device.")
+        st.markdown("On the right: the example patient's FLAIR scan, three planes inside the brain surface. Drag to rotate. "
+                    "Click **Load example patient** in the sidebar to see what the model finds in it.")
+    with hr:
+        try:
+            st.plotly_chart(fig_hero(ARGS.demo_dir), width="stretch", config={"displaylogo": False, "displayModeBar": False}, key="hero")
+        except Exception:
+            pass
+else:
+    st.title("NeuroScope")
+    st.markdown("Brain tumour segmentation from MRI with a built-in uncertainty estimate, so the result says when it should be checked by a specialist. "
+                "Works with any subset of the four standard sequences. Research prototype, not a medical device.")
 
 if summary:
     n_test = summary.get("n_test", "?")
@@ -577,7 +636,7 @@ else:
             seg_alpha = st.slider("Outline opacity", 0.1, 1.0, 0.55)
             unc_alpha = st.slider("Uncertainty opacity", 0.1, 1.0, 0.8) if show_unc else 0.8
             show_gt = st.checkbox("Expert outline (contour)", False) if (res["seg"] is not None and not simple) else False
-            st.caption("Purple: necrotic / non-enhancing core. Green: edema. Gold: enhancing tumour. Hover for a per-pixel readout; scroll to zoom, drag to pan.")
+            st.caption("Red: necrotic / non-enhancing core. Green: edema. Yellow: enhancing tumour. Purple glow: uncertainty. Hover for a per-pixel readout; scroll to zoom, drag to pan.")
         with b:
             n = img.shape[1 + axis]
             if axis == 0:
@@ -599,8 +658,8 @@ else:
             show = {"brain": st.checkbox("Brain surface", True)}
             for nm in REGION_NAMES:
                 show[nm] = st.checkbox(nm, True)
-            show_plane = st.checkbox("MRI slice plane", True, help="Follows the axial slice slider")
-            opacity = st.slider("Tumour opacity", 0.2, 1.0, 0.85)
+            show_plane = st.checkbox("MRI slice plane", False, help="Follows the axial slice slider")
+            opacity = st.slider("Tumour opacity", 0.2, 1.0, 0.9)
             base3d = st.selectbox("Plane sequence", present, index=present.index("flair") if "flair" in present else 0, format_func=lambda m: MOD_LABEL[m], key="b3d")
             if show_plane:
                 st.session_state.z = st.slider("Axial slice", 0, img.shape[1] - 1, st.session_state.z, key="z_3d")
