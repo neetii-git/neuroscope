@@ -20,7 +20,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import torch
-from matplotlib import cm
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
@@ -37,14 +36,16 @@ except Exception:  # pragma: no cover
     HAVE_SKIMAGE = False
 
 # ------------------------------------------------------------------------------------------------
-LABEL_RGB = {1: (220, 38, 38), 2: (34, 197, 94), 3: (250, 204, 21)}          # core red, edema green, enhancing yellow
+LABEL_RGB = {1: (123, 44, 191), 2: (46, 125, 50), 3: (224, 176, 70)}          # core purple, edema forest green, enhancing sand gold
 LABEL_NAMES = {0: "background", 1: "necrotic / non-enhancing core", 2: "edema", 3: "enhancing tumour"}
 REGION_NAMES = ["Whole tumour", "Tumour core", "Enhancing tumour"]
 REGION_KEYS = ["WT_ml", "TC_ml", "ET_ml"]
-REGION_HEX = ["#22C55E", "#DC2626", "#FACC15"]
+REGION_HEX = ["#2E7D32", "#7B2CBF", "#C9962E"]
 MOD_LABEL = {"t1": "T1", "t1ce": "T1ce (contrast)", "t2": "T2", "flair": "FLAIR"}
 LOG2 = float(np.log(2))
-PLOT_BG = "#121C30"
+PLOT_BG = "#EADFC9"
+ACCENT = "#7B2CBF"   # electric purple, used sparingly
+GREEN = "#2E7D32"
 
 
 def parse_args():
@@ -65,14 +66,17 @@ CSS = """
 <style>
 #MainMenu, footer {visibility: hidden;}
 .block-container {padding-top: 1.2rem; max-width: 1280px;}
-div[data-testid="stMetric"] {background: #121C30; border: 1px solid #1F2A44; border-radius: 10px; padding: 10px 14px;}
+div[data-testid="stMetric"] {background: #EADFC9; border: 1px solid #D9CBB0; border-radius: 10px; padding: 10px 14px;}
+div[data-testid="stMetricValue"] {color: #2E6B3F;}
+h1, h2, h3 {color: #1E2A1F;}
 </style>
 """
 
 
 def dark(fig: go.Figure, h: int = 420) -> go.Figure:
-    fig.update_layout(template="plotly_dark", paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG, height=h,
-                      margin=dict(l=10, r=10, t=36, b=10), font=dict(color="#E5E7EB"))
+    fig.update_layout(template="plotly_white", paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG, height=h,
+                      margin=dict(l=10, r=10, t=36, b=10), font=dict(color="#1E2A1F"))
+    fig.update_xaxes(gridcolor="#D9CBB0", zerolinecolor="#D9CBB0"); fig.update_yaxes(gridcolor="#D9CBB0", zerolinecolor="#D9CBB0")
     return fig
 
 
@@ -169,13 +173,13 @@ def compose_rgb(base, labels, ent, show_seg, show_unc, seg_alpha, unc_alpha, gt=
     if show_unc:
         e = np.clip(ent / LOG2, 0, 1)
         w = e[..., None] * unc_alpha
-        rgb = rgb * (1 - w) + cm.magma(e)[..., :3] * w
+        rgb = rgb * (1 - w) + np.array([0.54, 0.17, 0.89]) * w   # electric purple glow
     if show_seg:
         for lab, col in LABEL_RGB.items():
             m = labels == lab
             rgb[m] = rgb[m] * (1 - seg_alpha) + np.array(col) / 255.0 * seg_alpha
     if gt is not None:
-        rgb[contour(gt)] = (0.2, 0.9, 1.0)
+        rgb[contour(gt)] = (0.95, 0.90, 0.75)   # sand contour
     return (np.transpose(rgb, (1, 0, 2))[::-1] * 255).astype(np.uint8)
 
 
@@ -218,7 +222,7 @@ def fig_3d(res, z_axial: int, show: Dict[str, bool], opacity: float, show_plane:
     if HAVE_SKIMAGE and meshes is not None:
         if show.get("brain") and meshes["brain"] is not None:
             v, f = meshes["brain"]
-            fig.add_trace(go.Mesh3d(x=v[:, 2], y=v[:, 1], z=v[:, 0], i=f[:, 0], j=f[:, 1], k=f[:, 2], color="#94A3B8", opacity=0.07,
+            fig.add_trace(go.Mesh3d(x=v[:, 2], y=v[:, 1], z=v[:, 0], i=f[:, 0], j=f[:, 1], k=f[:, 2], color="#B8A98A", opacity=0.08,
                                     name="Brain surface", showlegend=True, hoverinfo="skip", lighting=dict(ambient=0.6)))
         for i, (nm, col) in enumerate(zip(REGION_NAMES, REGION_HEX)):
             if show.get(nm) and meshes["regions"][i] is not None:
@@ -264,9 +268,9 @@ def fig_slice_profile(res, z_cur: int):
     area = pred.regions[0].reshape(D, -1).sum(1) * res["voxel_ml"]
     ent = np.array([pred.entropy[i][brain[i]].mean() if brain[i].any() else 0.0 for i in range(D)])
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=np.arange(D), y=area, name="Tumour volume per slice (mL)", marker_color="#22C55E", opacity=0.55))
-    fig.add_trace(go.Scatter(x=np.arange(D), y=ent, name="Mean uncertainty in brain", yaxis="y2", line=dict(color="#F97316", width=2)))
-    fig.add_vline(x=z_cur, line=dict(color="#2DD4BF", dash="dot"), annotation_text=f"slice {z_cur}", annotation_position="top")
+    fig.add_trace(go.Bar(x=np.arange(D), y=area, name="Tumour volume per slice (mL)", marker_color=GREEN, opacity=0.55))
+    fig.add_trace(go.Scatter(x=np.arange(D), y=ent, name="Mean uncertainty in brain", yaxis="y2", line=dict(color=ACCENT, width=2)))
+    fig.add_vline(x=z_cur, line=dict(color="#1E2A1F", dash="dot"), annotation_text=f"slice {z_cur}", annotation_position="top")
     fig.update_layout(title=dict(text="Per-slice profile", x=0.02, font=dict(size=14)), xaxis_title="axial slice",
                       yaxis=dict(title="mL"), yaxis2=dict(title="entropy", overlaying="y", side="right", showgrid=False),
                       legend=dict(orientation="h", y=1.12), barmode="overlay")
@@ -288,16 +292,16 @@ def fig_case_vs_test(test_df: pd.DataFrame, thr: Dict, case_u: float, case_dice:
     ids = test_df["case_id"] if "case_id" in test_df else pd.Series([""] * len(test_df))
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=test_df["uncertainty"][~fail], y=test_df["dice_WT"][~fail], mode="markers", name="test patients, good outline",
-                             marker=dict(color="#22C55E", size=7, opacity=0.8), text=ids[~fail],
+                             marker=dict(color=GREEN, size=7, opacity=0.8), text=ids[~fail],
                              hovertemplate="%{text}<br>uncertainty %{x:.4f}<br>Dice %{y:.3f}<extra></extra>"))
     fig.add_trace(go.Scatter(x=test_df["uncertainty"][fail], y=test_df["dice_WT"][fail], mode="markers", name=f"test patients, Dice < {tau}",
-                             marker=dict(color="#EF4444", size=9, symbol="x"), text=ids[fail],
+                             marker=dict(color="#8B3A3A", size=9, symbol="x"), text=ids[fail],
                              hovertemplate="%{text}<br>uncertainty %{x:.4f}<br>Dice %{y:.3f}<extra></extra>"))
-    fig.add_vline(x=thr["threshold"], line=dict(color="#F97316", dash="dash"), annotation_text="review threshold", annotation_position="top right")
+    fig.add_vline(x=thr["threshold"], line=dict(color="#1E2A1F", dash="dash"), annotation_text="review threshold", annotation_position="top right")
     if case_dice is not None:
-        fig.add_trace(go.Scatter(x=[case_u], y=[case_dice], mode="markers", name="this case", marker=dict(color="#2DD4BF", size=16, symbol="star")))
+        fig.add_trace(go.Scatter(x=[case_u], y=[case_dice], mode="markers", name="this case", marker=dict(color=ACCENT, size=18, symbol="star", line=dict(color="#1E2A1F", width=1))))
     else:
-        fig.add_vline(x=case_u, line=dict(color="#2DD4BF", width=3), annotation_text="this case", annotation_position="bottom left")
+        fig.add_vline(x=case_u, line=dict(color=ACCENT, width=3), annotation_text="this case", annotation_position="bottom left")
     fig.update_layout(title=dict(text=f"This case against {len(test_df)} held-out test patients", x=0.02, font=dict(size=14)),
                       xaxis_title="case uncertainty (mean predictive entropy in ROI)", yaxis_title="Dice, whole tumour",
                       legend=dict(orientation="h", y=-0.25))
@@ -316,11 +320,11 @@ def fig_subsets(sub: pd.DataFrame):
 
 def fig_history(hist: pd.DataFrame):
     fig = go.Figure()
-    for c, nm in [("val_dice_WT", "val WT"), ("val_dice_TC", "val TC"), ("val_dice_ET", "val ET")]:
+    for c, nm, col in [("val_dice_WT", "val WT", REGION_HEX[0]), ("val_dice_TC", "val TC", REGION_HEX[1]), ("val_dice_ET", "val ET", REGION_HEX[2])]:
         if c in hist:
-            fig.add_trace(go.Scatter(x=hist["epoch"], y=hist[c], name=nm, mode="lines+markers"))
+            fig.add_trace(go.Scatter(x=hist["epoch"], y=hist[c], name=nm, mode="lines+markers", line=dict(color=col)))
     if "train_loss" in hist:
-        fig.add_trace(go.Scatter(x=hist["epoch"], y=hist["train_loss"], name="train loss", yaxis="y2", line=dict(dash="dot", color="#94A3B8")))
+        fig.add_trace(go.Scatter(x=hist["epoch"], y=hist["train_loss"], name="train loss", yaxis="y2", line=dict(dash="dot", color="#8A7A5C")))
     fig.update_layout(title=dict(text="Training curve", x=0.02, font=dict(size=14)), xaxis_title="epoch", yaxis_title="Dice",
                       yaxis2=dict(title="loss", overlaying="y", side="right", showgrid=False), legend=dict(orientation="h", y=1.1))
     return dark(fig, 320)
@@ -558,8 +562,8 @@ else:
             show_unc = st.checkbox("Uncertainty map", False, help="Brighter = the repeated runs disagreed more. Usually at the tumour edge.")
             seg_alpha = st.slider("Outline opacity", 0.1, 1.0, 0.55)
             unc_alpha = st.slider("Uncertainty opacity", 0.1, 1.0, 0.8) if show_unc else 0.8
-            show_gt = st.checkbox("Expert outline (cyan contour)", False) if (res["seg"] is not None and not simple) else False
-            st.caption("Red: necrotic / non-enhancing core. Green: edema. Yellow: enhancing tumour. Hover for a per-pixel readout; scroll to zoom, drag to pan.")
+            show_gt = st.checkbox("Expert outline (contour)", False) if (res["seg"] is not None and not simple) else False
+            st.caption("Purple: necrotic / non-enhancing core. Green: edema. Gold: enhancing tumour. Hover for a per-pixel readout; scroll to zoom, drag to pan.")
         with b:
             n = img.shape[1 + axis]
             if axis == 0:
