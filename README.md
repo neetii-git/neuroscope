@@ -110,6 +110,9 @@ python -m streamlit run app/app.py
 Sidebar: choose **Simple** or **Detailed** view, then load the bundled example patient or upload any subset of the
 four sequences. The result page has five tabs:
 
+- **3D brain** - WebGL point-cloud of the patient's own scan (every point is a voxel) with the predicted tumour glowing
+  inside it, auto-rotating; toggle brain / tumour / uncertainty recolouring / MRI slice plane. Three.js is vendored, so it works offline.
+  The same view, with the expert annotation, is the landing page.
 - **Slice viewer** - axial / coronal / sagittal, any background sequence, tumour overlay and uncertainty map with
   opacity sliders, optional expert-outline contour, per-pixel hover readout (tissue class, uncertainty, intensity), zoom and pan.
 - **3D** - marching-cubes surfaces of the three tumour regions inside a translucent brain surface, with the live MRI

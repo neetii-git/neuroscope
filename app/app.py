@@ -28,6 +28,9 @@ from neuroscope.data.preprocess import preprocess_case, uncrop  # noqa: E402
 from neuroscope.eval.metrics import region_metrics  # noqa: E402
 from neuroscope.inference.predictor import load_checkpoint, predict_volume  # noqa: E402
 from neuroscope.quality.iqa import assess_case  # noqa: E402
+import streamlit.components.v1 as components  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from viz3d import brain_html  # noqa: E402
 
 try:
     from skimage.measure import marching_cubes
@@ -136,7 +139,7 @@ def run_case(vols, affine, mc: int, ckpt_path: str):
     metrics = region_metrics(pred.regions, labels_to_regions(seg), with_hd95=False) if seg is not None else None
     brain = (np.abs(img).sum(0) > 0)
     return dict(img=img, seg=seg, meta=meta, pred=pred, infer_s=infer_s, present=present, quality=quality,
-                metrics=metrics, affine=affine, brain=brain, voxel_ml=voxel_mm3 / 1000.0, meshes=None)
+                metrics=metrics, affine=affine, brain=brain, voxel_ml=voxel_mm3 / 1000.0, meshes=None, token=time.time())
 
 
 def read_upload(upload):
@@ -477,18 +480,18 @@ hist_df = load_csv(os.path.join(os.path.dirname(os.path.abspath(ckpt_path)), "hi
 # ---------------- Header ----------------
 _landing = st.session_state.get("result") is None
 if _landing and os.path.isdir(ARGS.demo_dir):
-    hl, hr = st.columns([1, 1.25])
-    with hl:
-        st.title("NeuroScope")
-        st.markdown("Brain tumour segmentation from MRI with a built-in uncertainty estimate, so the result says when it should be checked by a specialist. "
-                    "Works with any subset of the four standard sequences. Research prototype, not a medical device.")
-        st.markdown("On the right: the example patient's FLAIR scan, three planes inside the brain surface. Drag to rotate. "
-                    "Click **Load example patient** in the sidebar to see what the model finds in it.")
-    with hr:
-        try:
-            st.plotly_chart(fig_hero(ARGS.demo_dir), width="stretch", config={"displaylogo": False, "displayModeBar": False}, key="hero")
-        except Exception:
-            pass
+    @st.cache_data(show_spinner=False)
+    def _hero_html(demo_dir: str) -> str:
+        vols, _ = load_demo_case(demo_dir)
+        key = "flair" if "flair" in vols else next(k for k in vols if k != "seg")
+        v = np.transpose(np.asarray(vols[key], np.float32), (2, 1, 0))
+        lab = np.transpose(vols["seg"], (2, 1, 0)) if "seg" in vols else None
+        return brain_html(v, lab, None, brain_step=3, tumour_step=2, height=600, title="NeuroScope",
+                          subtitle="Brain tumour segmentation from MRI with a built-in measure of how much to trust each result. "
+                                   "Shown: the example patient's FLAIR scan with the expert annotation. Load the example patient to see what the model finds.",
+                          autorotate=True, show_controls=True)
+    components.html(_hero_html(ARGS.demo_dir), height=600, scrolling=False)
+    st.caption("Every point is a voxel of the real scan, rendered in your browser. Drag to rotate, scroll to zoom. Research prototype, not a medical device.")
 else:
     st.title("NeuroScope")
     st.markdown("Brain tumour segmentation from MRI with a built-in uncertainty estimate, so the result says when it should be checked by a specialist. "
@@ -618,12 +621,28 @@ else:
     if missing:
         st.warning(f"Running without {', '.join(m.upper() for m in missing)}. Accuracy for the affected regions is lower; see the subset chart under Performance.")
 
-    tab_slices, tab_3d, tab_unc, tab_rob, tab_perf, tab_report = st.tabs(["Slice viewer", "3D", "Uncertainty", "Missing sequences", "Performance", "Report"])
+    tab_gl, tab_slices, tab_3d, tab_unc, tab_rob, tab_perf, tab_report = st.tabs(["3D brain", "Slice viewer", "3D surfaces", "Uncertainty", "Missing sequences", "Performance", "Report"])
 
     tum_z = np.where(pred.regions[0].reshape(pred.regions.shape[1], -1).sum(1) > 0)[0]
     default_z = int(tum_z[len(tum_z) // 2]) if tum_z.size else img.shape[1] // 2
     if "z" not in st.session_state:
         st.session_state.z = default_z
+
+    with tab_gl:
+        g1, g2 = st.columns([3, 1])
+        with g2:
+            gl_mod = st.selectbox("Brain from", present, index=present.index("flair") if "flair" in present else 0, format_func=lambda m: MOD_LABEL[m], key="glmod")
+            gl_plane = st.checkbox("MRI slice plane in the scene", True, key="glplane")
+            if gl_plane:
+                st.session_state.z = st.slider("Axial slice", 0, img.shape[1] - 1, st.session_state.z, key="z_gl")
+            st.caption("Buttons in the scene: Brain / Tumour / Uncertainty / Slice / Rotate / Reset. "
+                       "Uncertainty recolours the tumour: bright purple where the repeated runs disagreed. Every point is a voxel of this patient's scan.")
+        with g1:
+            @st.cache_data(show_spinner=False)
+            def _gl_html(src: str, mod: str, z: Optional[int], mc_: int, tok: float):
+                return brain_html(img[MODALITIES.index(mod)], pred.labels, pred.entropy, brain_step=2, tumour_step=1, height=620,
+                                  title="", subtitle="", slice_z=z, autorotate=True, show_controls=True)
+            components.html(_gl_html(st.session_state.source, gl_mod, st.session_state.z if gl_plane else None, pred.mc_samples, res["token"]), height=620, scrolling=False)
 
     with tab_slices:
         a, b = st.columns([1, 2.2])
