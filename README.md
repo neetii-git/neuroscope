@@ -103,19 +103,25 @@ Fill in the numbers from your run here once it finishes.
 ### Using the app
 
 ```bash
+pip install -r requirements.txt
 python -m streamlit run app/app.py
 ```
 
-The interface has two modes, switched in the sidebar:
+Sidebar: choose **Simple** or **Detailed** view, then load the bundled example patient or upload any subset of the
+four sequences. The result page has five tabs:
 
-- **Simple** - plain-language summary, tumour volumes, slice and 3D viewers, and a verdict
-  (confident / needs specialist review).
-- **Detailed** - per-region Dice, case uncertainty against the validated threshold, input-quality checks,
-  MC-sample control, ground-truth upload, and the full model card with the 15-subset table and reliability plots.
+- **Slice viewer** - axial / coronal / sagittal, any background sequence, tumour overlay and uncertainty map with
+  opacity sliders, optional expert-outline contour, per-pixel hover readout (tissue class, uncertainty, intensity), zoom and pan.
+- **3D** - marching-cubes surfaces of the three tumour regions inside a translucent brain surface, with the live MRI
+  slice plane following the slice slider. Layers can be toggled.
+- **Uncertainty** - per-slice tumour volume and uncertainty profile, nested-region volumes, and a scatter of the
+  current case against every held-out test patient (uncertainty vs Dice) with the validated review threshold.
+- **Performance** - test Dice for all 15 sequence combinations, training curve, risk-coverage curve, model card.
+- **Report** - Markdown / JSON report and the segmentation mask as NIfTI.
 
-The validated test-set numbers (Dice, failure-detection AUROC, review-flag sensitivity/specificity, GPU
-inference time) are shown on the landing page, read live from `runs/base/results/summary.json`.
-The bundled example patient is cached after its first run, so repeat demos are instant.
+In Detailed view the example patient can be re-run with chosen sequences removed, to show the missing-modality behaviour.
+The landing page shows the validated test-set numbers, read live from `runs/base/results/summary.json`.
+Example-patient results are cached after the first run.
 
 ## Design decisions (short)
 

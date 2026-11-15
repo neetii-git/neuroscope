@@ -1,4 +1,4 @@
-"""NeuroScope - brain tumour MRI analysis with built-in self-checks (research prototype).
+"""NeuroScope - brain tumour segmentation from MRI with uncertainty estimation (research prototype).
 
 Run:  python -m streamlit run app/app.py
 Optional: -- --ckpt runs/base/best.pt --results runs/base/results --demo-dir demo_case
@@ -14,36 +14,37 @@ import tempfile
 import time
 from typing import Dict, Optional
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 import torch
+from matplotlib import cm
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 from neuroscope.data.brats import MODALITIES, labels_to_regions, load_nifti_with_affine, remap_labels  # noqa: E402
 from neuroscope.data.preprocess import preprocess_case, uncrop  # noqa: E402
 from neuroscope.eval.metrics import region_metrics  # noqa: E402
-from neuroscope.inference.predictor import Prediction, load_checkpoint, predict_volume  # noqa: E402
+from neuroscope.inference.predictor import load_checkpoint, predict_volume  # noqa: E402
 from neuroscope.quality.iqa import assess_case  # noqa: E402
 
-# ------------------------------------------------------------------------------------------------
-# Constants
-# ------------------------------------------------------------------------------------------------
-LABEL_COLORS = {1: (0.86, 0.15, 0.15), 2: (0.16, 0.65, 0.35), 3: (0.98, 0.75, 0.14)}
-LABEL_NAMES = {1: "Dead / non-enhancing core", 2: "Swelling (edema)", 3: "Active (enhancing) tumour"}
-MOD_HELP = {
-    "t1": "T1 - basic anatomy scan",
-    "t1ce": "T1ce - T1 with contrast dye (shows active tumour)",
-    "t2": "T2 - fluid-sensitive scan",
-    "flair": "FLAIR - shows swelling around the tumour",
-}
-BRAIN_ML = 1300.0  # typical adult brain volume, for plain-language context only
+try:
+    from skimage.measure import marching_cubes
+    HAVE_SKIMAGE = True
+except Exception:  # pragma: no cover
+    HAVE_SKIMAGE = False
 
-PRIMARY = "#0F766E"
+# ------------------------------------------------------------------------------------------------
+LABEL_RGB = {1: (220, 38, 38), 2: (34, 197, 94), 3: (250, 204, 21)}          # core red, edema green, enhancing yellow
+LABEL_NAMES = {0: "background", 1: "necrotic / non-enhancing core", 2: "edema", 3: "enhancing tumour"}
+REGION_NAMES = ["Whole tumour", "Tumour core", "Enhancing tumour"]
+REGION_KEYS = ["WT_ml", "TC_ml", "ET_ml"]
+REGION_HEX = ["#22C55E", "#DC2626", "#FACC15"]
+MOD_LABEL = {"t1": "T1", "t1ce": "T1ce (contrast)", "t2": "T2", "flair": "FLAIR"}
+LOG2 = float(np.log(2))
+PLOT_BG = "#121C30"
 
 
 def parse_args():
@@ -60,15 +61,19 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 if DEVICE == "cpu":
     torch.set_num_threads(max(1, os.cpu_count() or 1))
 
-# ------------------------------------------------------------------------------------------------
-# Styling
-# ------------------------------------------------------------------------------------------------
 CSS = """
 <style>
 #MainMenu, footer {visibility: hidden;}
-.block-container {padding-top: 1.5rem; max-width: 1200px;}
+.block-container {padding-top: 1.2rem; max-width: 1280px;}
+div[data-testid="stMetric"] {background: #121C30; border: 1px solid #1F2A44; border-radius: 10px; padding: 10px 14px;}
 </style>
 """
+
+
+def dark(fig: go.Figure, h: int = 420) -> go.Figure:
+    fig.update_layout(template="plotly_dark", paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG, height=h,
+                      margin=dict(l=10, r=10, t=36, b=10), font=dict(color="#E5E7EB"))
+    return fig
 
 
 # ------------------------------------------------------------------------------------------------
@@ -78,7 +83,7 @@ CSS = """
 def get_model(ckpt_path: str, device: str):
     model = load_checkpoint(ckpt_path, device)
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    return model, {"epoch": ckpt.get("epoch"), "val": ckpt.get("val"), "config": ckpt.get("full_config", ckpt.get("config"))}
+    return model, {"epoch": ckpt.get("epoch"), "val": ckpt.get("val")}
 
 
 @st.cache_data(show_spinner=False)
@@ -87,6 +92,11 @@ def load_json(path: str) -> Optional[Dict]:
         with open(path) as f:
             return json.load(f)
     return None
+
+
+@st.cache_data(show_spinner=False)
+def load_csv(path: str) -> Optional[pd.DataFrame]:
+    return pd.read_csv(path) if os.path.exists(path) else None
 
 
 @st.cache_resource(show_spinner=False)
@@ -103,13 +113,13 @@ def load_demo_case(demo_dir: str):
 
 
 @st.cache_resource(show_spinner=False)
-def run_demo_inference(demo_dir: str, mc: int, ckpt_path: str):
-    """Demo case prediction is cached: first run is slow on CPU, every later run is instant."""
+def run_demo_inference(demo_dir: str, mc: int, ckpt_path: str, drop: tuple):
     vols, affine = load_demo_case(demo_dir)
-    return _run_case(vols, affine, mc, ckpt_path)
+    vols = {k: v for k, v in vols.items() if k not in drop}
+    return run_case(vols, affine, mc, ckpt_path)
 
 
-def _run_case(vols, affine, mc: int, ckpt_path: str):
+def run_case(vols, affine, mc: int, ckpt_path: str):
     model, _ = get_model(ckpt_path, DEVICE)
     present = [m for m in MODALITIES if m in vols]
     quality = assess_case({m: vols.get(m) for m in MODALITIES})
@@ -119,8 +129,9 @@ def _run_case(vols, affine, mc: int, ckpt_path: str):
     pred = predict_volume(model, img, mc_samples=mc, device=DEVICE, batch_size=32, voxel_volume_mm3=voxel_mm3)
     infer_s = time.time() - t0
     metrics = region_metrics(pred.regions, labels_to_regions(seg), with_hd95=False) if seg is not None else None
+    brain = (np.abs(img).sum(0) > 0)
     return dict(img=img, seg=seg, meta=meta, pred=pred, infer_s=infer_s, present=present, quality=quality,
-                metrics=metrics, affine=affine)
+                metrics=metrics, affine=affine, brain=brain, voxel_ml=voxel_mm3 / 1000.0, meshes=None)
 
 
 def read_upload(upload):
@@ -137,51 +148,182 @@ def read_upload(upload):
 
 
 # ------------------------------------------------------------------------------------------------
-# Figures
+# 2D viewer
 # ------------------------------------------------------------------------------------------------
-def overlay_figure(base: np.ndarray, labels: np.ndarray, entropy: np.ndarray, z: int, simple: bool):
-    fig, axes = plt.subplots(1, 3, figsize=(13, 4.4), facecolor="white")
-    sl = base[z]
-    nz = sl[sl != 0]
-    vmin, vmax = np.percentile(nz, [1, 99]) if nz.size else (0, 1)
-    titles = ["MRI scan", "Tumour found by the AI", "Where the AI is unsure"] if simple else \
-             ["Input slice", "Predicted segmentation", "Predictive entropy"]
-    for ax, t in zip(axes, titles):
-        ax.imshow(sl.T, cmap="gray", vmin=vmin, vmax=vmax, origin="lower")
-        ax.set_title(t, fontsize=12, color="#0F172A", pad=8)
-        ax.axis("off")
-    rgba = np.zeros(sl.shape + (4,), dtype=np.float32)
-    for lab, col in LABEL_COLORS.items():
-        m = labels[z] == lab
-        rgba[m, :3] = col
-        rgba[m, 3] = 0.55
-    axes[1].imshow(np.transpose(rgba, (1, 0, 2)), origin="lower")
-    ent = entropy[z].copy()
-    ent[sl == 0] = 0
-    axes[2].imshow(ent.T, cmap="magma", alpha=0.75, vmin=0, vmax=float(np.log(2)), origin="lower")
-    fig.tight_layout()
-    return fig
+def take_slice(vol: np.ndarray, axis: int, i: int) -> np.ndarray:
+    return vol[i] if axis == 0 else (vol[:, i, :] if axis == 1 else vol[:, :, i])
 
 
-def plotly_3d(regions: np.ndarray, step: int = 2):
-    import plotly.graph_objects as go
-    fig = go.Figure()
-    names = ["Whole tumour (incl. swelling)", "Tumour core", "Active tumour"]
-    colors = ["#2E8B57", "#DC2626", "#F59E0B"]
+def contour(mask: np.ndarray) -> np.ndarray:
+    m = mask > 0
+    p = np.pad(m, 1)
+    inner = p[2:, 1:-1] & p[:-2, 1:-1] & p[1:-1, 2:] & p[1:-1, :-2]
+    return m & ~inner
+
+
+def compose_rgb(base, labels, ent, show_seg, show_unc, seg_alpha, unc_alpha, gt=None):
+    nz = base[base != 0]
+    lo, hi = (np.percentile(nz, [1, 99]) if nz.size else (0.0, 1.0))
+    g = np.clip((base - lo) / (hi - lo + 1e-6), 0, 1)
+    rgb = np.stack([g, g, g], -1)
+    if show_unc:
+        e = np.clip(ent / LOG2, 0, 1)
+        w = e[..., None] * unc_alpha
+        rgb = rgb * (1 - w) + cm.magma(e)[..., :3] * w
+    if show_seg:
+        for lab, col in LABEL_RGB.items():
+            m = labels == lab
+            rgb[m] = rgb[m] * (1 - seg_alpha) + np.array(col) / 255.0 * seg_alpha
+    if gt is not None:
+        rgb[contour(gt)] = (0.2, 0.9, 1.0)
+    return (np.transpose(rgb, (1, 0, 2))[::-1] * 255).astype(np.uint8)
+
+
+def slice_figure(base, labels, ent, show_seg, show_unc, seg_alpha, unc_alpha, gt, title):
+    img = compose_rgb(base, labels, ent, show_seg, show_unc, seg_alpha, unc_alpha, gt)
+    names = np.vectorize(LABEL_NAMES.get)(labels)
+    custom = np.stack([names.T[::-1], np.round(ent, 3).T[::-1], np.round(base, 2).T[::-1]], -1)
+    fig = go.Figure(go.Image(z=img, customdata=custom,
+                             hovertemplate="tissue: %{customdata[0]}<br>uncertainty: %{customdata[1]}<br>intensity (z): %{customdata[2]}<extra></extra>"))
+    fig.update_layout(title=dict(text=title, x=0.02, font=dict(size=14)), xaxis=dict(visible=False),
+                      yaxis=dict(visible=False, scaleanchor="x"), dragmode="pan")
+    return dark(fig, 520)
+
+
+# ------------------------------------------------------------------------------------------------
+# 3D viewer
+# ------------------------------------------------------------------------------------------------
+def mesh(mask: np.ndarray, step: int):
+    v = mask[::step, ::step, ::step].astype(np.float32)
+    if v.sum() < 8:
+        return None
+    v = np.pad(v, 1)
+    verts, faces, _, _ = marching_cubes(v, level=0.5, step_size=1)
+    return (verts - 1) * step, faces
+
+
+def build_meshes(res):
+    out = {"brain": None, "regions": [None] * 3}
+    if not HAVE_SKIMAGE:
+        return out
+    out["brain"] = mesh(res["brain"], 3)
     for i in range(3):
-        v = regions[i][::step, ::step, ::step].astype(np.float32)
-        if v.sum() == 0:
-            continue
-        D, H, W = v.shape
-        zz, yy, xx = np.mgrid[0:D, 0:H, 0:W]
-        fig.add_trace(go.Isosurface(x=xx.flatten(), y=yy.flatten(), z=zz.flatten(), value=v.flatten(),
-                                    isomin=0.5, isomax=1.0, surface_count=1, opacity=0.3 if i == 0 else 0.65,
-                                    colorscale=[[0, colors[i]], [1, colors[i]]], showscale=False, name=names[i],
-                                    caps=dict(x_show=False, y_show=False, z_show=False), showlegend=True))
-    fig.update_layout(height=520, margin=dict(l=0, r=0, t=10, b=0), paper_bgcolor="white",
-                      scene=dict(aspectmode="data", xaxis_visible=False, yaxis_visible=False, zaxis_visible=False),
-                      legend=dict(orientation="h", y=0.02, x=0.5, xanchor="center"))
-    return fig
+        out["regions"][i] = mesh(res["pred"].regions[i], 2)
+    return out
+
+
+def fig_3d(res, z_axial: int, show: Dict[str, bool], opacity: float, show_plane: bool, base_vol: np.ndarray):
+    pred, meshes = res["pred"], res["meshes"]
+    fig = go.Figure()
+    if HAVE_SKIMAGE and meshes is not None:
+        if show.get("brain") and meshes["brain"] is not None:
+            v, f = meshes["brain"]
+            fig.add_trace(go.Mesh3d(x=v[:, 2], y=v[:, 1], z=v[:, 0], i=f[:, 0], j=f[:, 1], k=f[:, 2], color="#94A3B8", opacity=0.07,
+                                    name="Brain surface", showlegend=True, hoverinfo="skip", lighting=dict(ambient=0.6)))
+        for i, (nm, col) in enumerate(zip(REGION_NAMES, REGION_HEX)):
+            if show.get(nm) and meshes["regions"][i] is not None:
+                v, f = meshes["regions"][i]
+                fig.add_trace(go.Mesh3d(x=v[:, 2], y=v[:, 1], z=v[:, 0], i=f[:, 0], j=f[:, 1], k=f[:, 2], color=col,
+                                        opacity=(opacity * 0.45) if i == 0 else opacity,
+                                        name=f"{nm} ({pred.volumes_ml[REGION_KEYS[i]]:.1f} mL)", showlegend=True,
+                                        hovertemplate=nm + "<extra></extra>",
+                                        lighting=dict(ambient=0.45, diffuse=0.8, specular=0.25, roughness=0.6)))
+    else:
+        for i, (nm, col) in enumerate(zip(REGION_NAMES, REGION_HEX)):
+            if not show.get(nm):
+                continue
+            v = pred.regions[i][::2, ::2, ::2].astype(np.float32)
+            if v.sum() == 0:
+                continue
+            D, H, W = v.shape
+            zz, yy, xx = np.mgrid[0:D, 0:H, 0:W] * 2
+            fig.add_trace(go.Isosurface(x=xx.flatten(), y=yy.flatten(), z=zz.flatten(), value=v.flatten(), isomin=0.5, isomax=1,
+                                        surface_count=1, opacity=opacity * (0.45 if i == 0 else 1), colorscale=[[0, col], [1, col]],
+                                        showscale=False, name=nm, caps=dict(x_show=False, y_show=False, z_show=False)))
+    if show_plane:
+        sl = base_vol[z_axial]
+        nz = sl[sl != 0]
+        lo, hi = (np.percentile(nz, [1, 99]) if nz.size else (0, 1))
+        H, W = sl.shape
+        fig.add_trace(go.Surface(x=np.arange(W), y=np.arange(H), z=np.full((H, W), float(z_axial)),
+                                 surfacecolor=np.clip((sl - lo) / (hi - lo + 1e-6), 0, 1), colorscale="Gray", cmin=0, cmax=1,
+                                 showscale=False, opacity=0.95, name=f"Axial slice {z_axial}", hoverinfo="skip", showlegend=True))
+    D = pred.regions.shape[1]
+    fig.update_layout(scene=dict(xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False, range=[0, D]),
+                                 aspectmode="data", bgcolor=PLOT_BG, camera=dict(eye=dict(x=1.6, y=1.2, z=0.9))),
+                      legend=dict(orientation="h", y=0.0, x=0.5, xanchor="center", bgcolor="rgba(0,0,0,0)"))
+    return dark(fig, 640)
+
+
+# ------------------------------------------------------------------------------------------------
+# Analysis charts
+# ------------------------------------------------------------------------------------------------
+def fig_slice_profile(res, z_cur: int):
+    pred, brain = res["pred"], res["brain"]
+    D = pred.regions.shape[1]
+    area = pred.regions[0].reshape(D, -1).sum(1) * res["voxel_ml"]
+    ent = np.array([pred.entropy[i][brain[i]].mean() if brain[i].any() else 0.0 for i in range(D)])
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=np.arange(D), y=area, name="Tumour volume per slice (mL)", marker_color="#22C55E", opacity=0.55))
+    fig.add_trace(go.Scatter(x=np.arange(D), y=ent, name="Mean uncertainty in brain", yaxis="y2", line=dict(color="#F97316", width=2)))
+    fig.add_vline(x=z_cur, line=dict(color="#2DD4BF", dash="dot"), annotation_text=f"slice {z_cur}", annotation_position="top")
+    fig.update_layout(title=dict(text="Per-slice profile", x=0.02, font=dict(size=14)), xaxis_title="axial slice",
+                      yaxis=dict(title="mL"), yaxis2=dict(title="entropy", overlaying="y", side="right", showgrid=False),
+                      legend=dict(orientation="h", y=1.12), barmode="overlay")
+    return dark(fig, 340)
+
+
+def fig_volumes(pred):
+    vals = [pred.volumes_ml[k] for k in REGION_KEYS]
+    fig = go.Figure(go.Bar(x=vals, y=REGION_NAMES, orientation="h", marker_color=REGION_HEX,
+                           text=[f"{v:.1f} mL" for v in vals], textposition="outside"))
+    fig.update_layout(title=dict(text="Volumes (nested regions)", x=0.02, font=dict(size=14)), xaxis_title="mL",
+                      yaxis=dict(autorange="reversed"), xaxis=dict(range=[0, max(vals) * 1.3 + 1]))
+    return dark(fig, 260)
+
+
+def fig_case_vs_test(test_df: pd.DataFrame, thr: Dict, case_u: float, case_dice: Optional[float]):
+    tau = thr.get("tau_fail", 0.75)
+    fail = test_df["dice_WT"] < tau
+    ids = test_df["case_id"] if "case_id" in test_df else pd.Series([""] * len(test_df))
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=test_df["uncertainty"][~fail], y=test_df["dice_WT"][~fail], mode="markers", name="test patients, good outline",
+                             marker=dict(color="#22C55E", size=7, opacity=0.8), text=ids[~fail],
+                             hovertemplate="%{text}<br>uncertainty %{x:.4f}<br>Dice %{y:.3f}<extra></extra>"))
+    fig.add_trace(go.Scatter(x=test_df["uncertainty"][fail], y=test_df["dice_WT"][fail], mode="markers", name=f"test patients, Dice < {tau}",
+                             marker=dict(color="#EF4444", size=9, symbol="x"), text=ids[fail],
+                             hovertemplate="%{text}<br>uncertainty %{x:.4f}<br>Dice %{y:.3f}<extra></extra>"))
+    fig.add_vline(x=thr["threshold"], line=dict(color="#F97316", dash="dash"), annotation_text="review threshold", annotation_position="top right")
+    if case_dice is not None:
+        fig.add_trace(go.Scatter(x=[case_u], y=[case_dice], mode="markers", name="this case", marker=dict(color="#2DD4BF", size=16, symbol="star")))
+    else:
+        fig.add_vline(x=case_u, line=dict(color="#2DD4BF", width=3), annotation_text="this case", annotation_position="bottom left")
+    fig.update_layout(title=dict(text=f"This case against {len(test_df)} held-out test patients", x=0.02, font=dict(size=14)),
+                      xaxis_title="case uncertainty (mean predictive entropy in ROI)", yaxis_title="Dice, whole tumour",
+                      legend=dict(orientation="h", y=-0.25))
+    return dark(fig, 420)
+
+
+def fig_subsets(sub: pd.DataFrame):
+    sub = sub.sort_values("dice_WT", ascending=True)
+    fig = go.Figure()
+    for col, nm, c in [("dice_WT", "Whole tumour", REGION_HEX[0]), ("dice_TC", "Tumour core", REGION_HEX[1]), ("dice_ET", "Enhancing", REGION_HEX[2])]:
+        fig.add_trace(go.Bar(y=sub["subset"].str.upper(), x=sub[col], name=nm, orientation="h", marker_color=c))
+    fig.update_layout(title=dict(text="Test Dice for every combination of input sequences", x=0.02, font=dict(size=14)),
+                      barmode="group", xaxis=dict(range=[0, 1], title="Dice"), legend=dict(orientation="h", y=1.08))
+    return dark(fig, 560)
+
+
+def fig_history(hist: pd.DataFrame):
+    fig = go.Figure()
+    for c, nm in [("val_dice_WT", "val WT"), ("val_dice_TC", "val TC"), ("val_dice_ET", "val ET")]:
+        if c in hist:
+            fig.add_trace(go.Scatter(x=hist["epoch"], y=hist[c], name=nm, mode="lines+markers"))
+    if "train_loss" in hist:
+        fig.add_trace(go.Scatter(x=hist["epoch"], y=hist["train_loss"], name="train loss", yaxis="y2", line=dict(dash="dot", color="#94A3B8")))
+    fig.update_layout(title=dict(text="Training curve", x=0.02, font=dict(size=14)), xaxis_title="epoch", yaxis_title="Dice",
+                      yaxis2=dict(title="loss", overlaying="y", side="right", showgrid=False), legend=dict(orientation="h", y=1.1))
+    return dark(fig, 320)
 
 
 # ------------------------------------------------------------------------------------------------
@@ -202,7 +344,7 @@ def build_report(res, flagged, thr, model_info) -> Dict:
         "mc_samples": pred.mc_samples,
         "inference_seconds": res["infer_s"],
         "device": DEVICE,
-        "model": {k: model_info.get(k) for k in ["epoch", "val"]},
+        "model": model_info,
         "metrics_vs_ground_truth": res["metrics"],
     }
 
@@ -210,21 +352,19 @@ def build_report(res, flagged, thr, model_info) -> Dict:
 def report_markdown(r: Dict) -> str:
     v = r["tumour_volumes_ml"]
     lines = ["# NeuroScope analysis report", "", f"_{r['tool']}_", "", f"Generated: {r['timestamp']}", "",
-             "## Summary in plain language",
-             f"The AI found a tumour region of about **{v['WT_ml']:.0f} mL** (including swelling). "
-             f"The solid core is about **{v['TC_ml']:.0f} mL**, of which **{v['ET_ml']:.0f} mL** is active (enhancing) tumour. "
-             f"{'The AI was **not confident** on this scan, so a specialist must check it carefully.' if r['needs_human_review'] else 'The AI was confident on this scan, but a specialist must still confirm the result.'}",
-             "", "## Input", f"- Scans used: {', '.join(m.upper() for m in r['modalities_used'])}",
+             "## Summary",
+             f"Abnormal region (whole tumour, incl. edema): **{v['WT_ml']:.1f} mL**. Tumour core: **{v['TC_ml']:.1f} mL**. "
+             f"Enhancing tumour: **{v['ET_ml']:.1f} mL**. "
+             + ("**Flagged for specialist review** (model uncertainty above the validated threshold)." if r["needs_human_review"]
+                else "Model uncertainty below the validated review threshold; expert confirmation still required."),
+             "", "## Input", f"- Sequences used: {', '.join(m.upper() for m in r['modalities_used'])}",
              f"- Missing: {', '.join(m.upper() for m in r['modalities_missing']) or 'none'}",
              f"- Quality status: **{r['input_quality']['status']}** (score {r['input_quality']['score']:.2f})"]
     for c in r["input_quality"]["checks"]:
         if c["status"] != "pass":
             lines.append(f"  - [{c['modality']}] {c['message']}")
-    lines += ["", "## Segmentation volumes", f"- Whole tumour (WT): {v['WT_ml']:.1f} mL",
-              f"- Tumour core (TC): {v['TC_ml']:.1f} mL", f"- Enhancing tumour (ET): {v['ET_ml']:.1f} mL",
-              "", "## Reliability", f"- Case uncertainty (mean predictive entropy in ROI): {r['case_uncertainty']:.4f}",
-              f"- Monte Carlo dropout samples: {r['mc_samples']}",
-              f"- Inference: {r['inference_seconds']:.1f} s on {r['device']}",
+    lines += ["", "## Reliability", f"- Case uncertainty (mean predictive entropy in ROI): {r['case_uncertainty']:.4f}",
+              f"- Monte Carlo dropout samples: {r['mc_samples']}", f"- Inference: {r['inference_seconds']:.1f} s on {r['device']}",
               f"- **Needs human review: {'YES' if r['needs_human_review'] else 'no'}**"]
     if r["review_threshold"]:
         t = r["review_threshold"]
@@ -232,126 +372,98 @@ def report_markdown(r: Dict) -> str:
     if r.get("metrics_vs_ground_truth"):
         m = r["metrics_vs_ground_truth"]
         lines += ["", "## Agreement with provided ground truth", f"- Dice WT {m['dice_WT']:.3f} | TC {m['dice_TC']:.3f} | ET {m['dice_ET']:.3f}"]
-    lines += ["", "## Limitations", "- 2D slice-wise model; trained on BraTS 2020 adult glioma only.",
+    lines += ["", "## Limitations", "- 2D slice-wise model trained on BraTS 2020 adult glioma only.",
               "- Uncertainty reflects model disagreement, not clinical reliability.",
               "- Quality checks are heuristics; passing them does not certify diagnostic suitability."]
     return "\n".join(lines)
 
 
-# ------------------------------------------------------------------------------------------------
-# Small UI helpers
-# ------------------------------------------------------------------------------------------------
-def stat(col, label, value, sub=""):
-    col.markdown(f'<div class="ns-stat"><div class="k">{label}</div><div class="v">{value}</div><div class="s">{sub}</div></div>',
-                 unsafe_allow_html=True)
-
-
-def fmt_ci(d):
+def ci_txt(d):
     if not d:
         return None, ""
     lo, hi = d.get("ci95", [None, None])
-    return d["mean"], (f"95% CI {lo:.2f}-{hi:.2f}" if lo is not None else "")
-
-
-def plain_size(ml: float) -> str:
-    pct = 100.0 * ml / BRAIN_ML
-    return f"{ml:.0f} mL (about {pct:.1f}% of a typical adult brain)"
+    return d["mean"], (f"95% CI {lo:.3f}-{hi:.3f}" if lo is not None else "")
 
 
 # ================================================================================================
 # Page
 # ================================================================================================
-st.set_page_config(page_title="NeuroScope - Brain tumour MRI analysis", layout="wide",
-                   initial_sidebar_state="expanded")
+st.set_page_config(page_title="NeuroScope", layout="wide", initial_sidebar_state="expanded")
 st.markdown(CSS, unsafe_allow_html=True)
-
-summary = load_json(os.path.join(ARGS.results, "summary.json"))
-thr = load_json(os.path.join(ARGS.results, "threshold.json"))
 
 # ---------------- Sidebar ----------------
 with st.sidebar:
-    st.markdown("### NeuroScope")
-    mode = st.radio("View", ["Simple", "Detailed"], index=0, help="Simple hides the technical numbers. The analysis is the same.")
-    simple = mode == "Simple"
+    st.markdown("## NeuroScope")
+    simple = st.radio("View", ["Simple", "Detailed"], horizontal=True, help="Simple hides the technical numbers. The analysis is identical.") == "Simple"
     st.divider()
-
-    st.markdown("**Step 1. Choose scans**")
+    st.markdown("**Step 1. Scans**")
     has_demo = os.path.isdir(ARGS.demo_dir)
-    use_demo = st.button("Load example patient", type="primary", width="stretch",
-                         disabled=not has_demo, help="An anonymised case from the BraTS 2020 test split")
-    st.caption("Or upload MRI files (.nii / .nii.gz). Any subset of the four scans works.")
-    uploads = {m: st.file_uploader(MOD_HELP[m], type=["nii", "gz"], key=m) for m in MODALITIES}
-    seg_upload = None
-    if not simple:
-        seg_upload = st.file_uploader("Ground-truth mask (optional, for evaluation)", type=["nii", "gz"], key="seg")
-
+    drop = ()
+    if not simple and has_demo:
+        drop = tuple(st.multiselect("Simulate missing sequences on the example", MODALITIES, default=[],
+                                    format_func=lambda m: MOD_LABEL[m], help="Shows how the model behaves when a scan is unavailable"))
+    use_demo = st.button("Load example patient", type="primary", width="stretch", disabled=not has_demo,
+                         help="An anonymised case from the BraTS 2020 test split (never used in training)")
+    st.caption("Or upload MRI files (.nii / .nii.gz). Any subset of the four sequences works.")
+    uploads = {m: st.file_uploader(MOD_LABEL[m], type=["nii", "gz"], key=m) for m in MODALITIES}
+    seg_upload = st.file_uploader("Ground-truth mask (optional)", type=["nii", "gz"], key="seg") if not simple else None
     st.markdown("**Step 2. Run**")
     mc_default = 4 if DEVICE == "cpu" else 8
     if simple:
         mc = mc_default
-        st.caption(f"Device: {DEVICE}. The model is run {mc} times per scan to estimate confidence.")
+        st.caption(f"Device: {DEVICE}. The model is run {mc} times per scan to estimate its confidence.")
     else:
-        mc = st.slider("Monte Carlo dropout samples", 1, 16, mc_default,
-                       help="More samples give a better uncertainty estimate, slower. Validated at 8.")
-        st.caption(f"Device: `{DEVICE}`")
+        mc = st.slider("Monte Carlo dropout samples", 1, 16, mc_default, help="More samples give a better uncertainty estimate but take longer. Validated at 8.")
+        st.caption(f"Device: {DEVICE}")
     run = st.button("Analyse uploaded scans", width="stretch")
-    show_3d = st.checkbox("3D view", value=True)
-
     with st.expander("Advanced"):
         ckpt_path = st.text_input("Checkpoint", ARGS.ckpt)
         results_dir = st.text_input("Results dir", ARGS.results)
-        if results_dir != ARGS.results:
-            summary = load_json(os.path.join(results_dir, "summary.json"))
-            thr = load_json(os.path.join(results_dir, "threshold.json"))
+
+summary = load_json(os.path.join(results_dir, "summary.json"))
+thr = load_json(os.path.join(results_dir, "threshold.json"))
+test_df = load_csv(os.path.join(results_dir, "test_per_case.csv"))
+sub_df = load_csv(os.path.join(results_dir, "subsets.csv"))
+hist_df = load_csv(os.path.join(os.path.dirname(os.path.abspath(ckpt_path)), "history.csv"))
 
 # ---------------- Header ----------------
 st.title("NeuroScope")
-st.markdown("Brain tumour segmentation from MRI, with an uncertainty estimate that says when the result should be checked by a specialist. "
-            "Works with any subset of the four standard MRI sequences. Research prototype, not a medical device.")
-st.markdown("")
+st.markdown("Brain tumour segmentation from MRI with a built-in uncertainty estimate, so the result says when it should be checked by a specialist. "
+            "Works with any subset of the four standard sequences. Research prototype, not a medical device.")
 
-# ---------------- Validated performance strip ----------------
 if summary:
     n_test = summary.get("n_test", "?")
-    dwt, dwt_ci = fmt_ci(summary.get("dice_WT"))
-    dtc, _ = fmt_ci(summary.get("dice_TC"))
-    det, _ = fmt_ci(summary.get("dice_ET"))
-    rel = summary.get("reliability", {})
-    flag = summary.get("review_flag", {})
-    inf, _ = fmt_ci(summary.get("infer_s"))
+    dwt, dwt_ci = ci_txt(summary.get("dice_WT")); dtc, _ = ci_txt(summary.get("dice_TC")); det, _ = ci_txt(summary.get("dice_ET"))
+    rel, flag = summary.get("reliability", {}), summary.get("review_flag", {})
+    inf, _ = ci_txt(summary.get("infer_s"))
     c = st.columns(4)
     if simple:
-        c[0].metric("Overlap with expert outlines", f"{100*dwt:.0f}%", help=f"Dice score, whole tumour, on {n_test} test patients the model never saw")
-        c[1].metric("Weak results detected", f"{100*rel.get('failure_auroc', float('nan')):.0f}%", help="How well the confidence score separates good from poor outlines (AUROC)")
-        c[2].metric("Scan combinations supported", "15 of 15", help="Any subset of T1, T1ce, T2, FLAIR")
-        c[3].metric("Time per patient (GPU)", f"{inf:.1f} s" if inf else "n/a", help="Including the repeated runs for the confidence estimate")
-        st.caption(f"Measured on {n_test} held-out BraTS 2020 patients. Details under 'Validated performance' at the bottom of the page.")
+        c[0].metric("Overlap with expert outlines", f"{100*dwt:.0f}%", help=f"Dice, whole tumour, on {n_test} test patients never seen in training")
+        c[1].metric("Poor outlines caught by the confidence score", f"{100*rel.get('failure_auroc', float('nan')):.0f}%", help="AUROC of case uncertainty for detecting WT Dice < 0.75")
+        c[2].metric("Sequence combinations supported", "15 of 15", help="Any subset of T1, T1ce, T2, FLAIR")
+        c[3].metric("Time per patient on GPU", f"{inf:.1f} s" if inf else "n/a", help="Including the repeated runs used for the confidence estimate")
     else:
-        c[0].metric("Test Dice WT / TC / ET", f"{dwt:.3f} / {dtc:.3f} / {det:.3f}", help=f"n = {n_test}, {dwt_ci} (WT)")
-        c[1].metric("Failure-detection AUROC", f"{rel.get('failure_auroc', float('nan')):.3f}",
-                    help=f"Spearman rho(uncertainty, Dice) = {rel.get('spearman_rho', float('nan')):.2f}, AURC {rel.get('aurc', float('nan')):.3f}")
-        c[2].metric("Review flag rate", f"{100*flag.get('flag_rate', float('nan')):.0f}%",
-                    help=f"Sensitivity {flag.get('flag_sensitivity', float('nan')):.2f}, specificity {flag.get('flag_specificity', float('nan')):.2f}, Dice on accepted cases {flag.get('dice_accepted', float('nan')):.3f}")
-        c[3].metric("Inference per case (GPU)", f"{inf:.1f} s" if inf else "n/a", help=f"MC x{summary.get('mc_samples')}, 7.8M parameters")
-    st.markdown("")
+        c[0].metric("Test Dice  WT / TC / ET", f"{dwt:.3f} / {dtc:.3f} / {det:.3f}", help=f"n = {n_test}; WT {dwt_ci}")
+        c[1].metric("Failure-detection AUROC", f"{rel.get('failure_auroc', float('nan')):.3f}", help=f"Spearman rho = {rel.get('spearman_rho', float('nan')):.2f}; AURC {rel.get('aurc', float('nan')):.3f}")
+        c[2].metric("Review flag", f"{100*flag.get('flag_rate', float('nan')):.0f}% of cases",
+                    help=f"sensitivity {flag.get('flag_sensitivity', float('nan')):.2f}, specificity {flag.get('flag_specificity', float('nan')):.2f}; Dice on accepted cases {flag.get('dice_accepted', float('nan')):.3f}")
+        c[3].metric("Inference per case (GPU)", f"{inf:.1f} s" if inf else "n/a", help=f"MC x{summary.get('mc_samples')}; 7.8M parameters")
 
-# ---------------- Load model ----------------
 if not os.path.exists(ckpt_path):
     st.error(f"Model file not found: {ckpt_path}. Train first (scripts/train.py) or pass --ckpt.")
     st.stop()
 model, model_info = get_model(ckpt_path, DEVICE)
 
-# ---------------- Case selection ----------------
+# ---------------- Run ----------------
 if "result" not in st.session_state:
-    st.session_state.result = None
-    st.session_state.source = None
+    st.session_state.result, st.session_state.source = None, None
 
 if use_demo:
     with st.status("Analysing example patient", expanded=True) as status:
-        st.write("Loading scans and checking quality")
-        st.write(f"Running the model {mc} times (first run on CPU takes 1-2 min; later runs are cached)")
-        st.session_state.result = run_demo_inference(ARGS.demo_dir, mc, ckpt_path)
-        st.session_state.source = "Example patient (BraTS 2020 test split)"
+        st.write("Loading scans, checking quality, preprocessing")
+        st.write(f"Running the model {mc} times with dropout (first CPU run takes 1-2 min; repeats are cached)")
+        st.session_state.result = run_demo_inference(ARGS.demo_dir, mc, ckpt_path, drop)
+        st.session_state.source = "Example patient, BraTS 2020 test split" + (f" (without {', '.join(m.upper() for m in drop)})" if drop else "")
         status.update(label="Analysis complete", state="complete", expanded=False)
 elif run:
     vols, affine = {}, np.eye(4)
@@ -362,36 +474,39 @@ elif run:
     if seg_upload is not None:
         vols["seg"] = remap_labels(read_upload(seg_upload)[0].astype(np.int16))
     if not vols:
-        st.warning("Upload at least one MRI scan, or load the example patient.")
+        st.warning("Upload at least one MRI sequence, or load the example patient.")
     else:
         q = assess_case({m: vols.get(m) for m in MODALITIES})
         if q.status == "fail":
             st.error("Scans failed the quality check: " + "; ".join(q.warnings()))
             st.stop()
         with st.status("Analysing scans", expanded=True) as status:
-            st.write(f"Checking quality, then running the model {mc} times")
-            st.session_state.result = _run_case(vols, affine, mc, ckpt_path)
+            st.write(f"Checking quality, preprocessing, running the model {mc} times")
+            st.session_state.result = run_case(vols, affine, mc, ckpt_path)
             st.session_state.source = "Uploaded scans"
             status.update(label="Analysis complete", state="complete", expanded=False)
 
 res = st.session_state.result
 
-# ---------------- Empty state: how it works ----------------
+# ---------------- Landing ----------------
 if res is None:
     st.markdown("#### How to use")
     st.markdown("""
-1. **Choose scans** - click *Load example patient* in the sidebar, or upload your own MRI files. Missing sequences are allowed.
+1. **Scans** - click *Load example patient* in the sidebar, or upload your own MRI files. Missing sequences are allowed.
 2. **Run** - the app checks scan quality, segments the tumour, and runs the model several times to measure how much its answers vary.
-3. **Read the result** - tumour volumes, a slice viewer, a 3D view, and a verdict: *confident* or *needs specialist review*. A report can be downloaded.
+3. **Explore** - volumes, an interactive slice viewer with hover readout, a 3D reconstruction, where this case sits among the test patients, and a downloadable report.
     """)
     with st.expander("Glossary"):
         st.markdown("""
-- **MRI sequences (T1, T1ce, T2, FLAIR)** - four scan types taken in the same session; each shows different tissue. T1ce uses contrast dye and shows active tumour; FLAIR shows swelling.
-- **Segmentation** - outlining the tumour on every slice. Done manually this takes a radiologist roughly 20-60 minutes.
+- **MRI sequences (T1, T1ce, T2, FLAIR)** - four scan types from one session; each shows different tissue. T1ce uses contrast dye and shows active tumour; FLAIR shows swelling.
+- **Segmentation** - outlining the tumour on every slice. Manually this takes a radiologist roughly 20-60 minutes per patient.
 - **Whole tumour / tumour core / enhancing tumour** - everything abnormal including swelling; the solid centre; the part that takes up contrast dye.
-- **Uncertainty** - the model is run several times with dropout switched on. If the outputs disagree, the case is flagged for review. The flag threshold was fixed on validation data.
-- **Dice score** - overlap between two outlines, 0 to 1. Radiologists agree with each other at roughly 0.85-0.90.
+- **Uncertainty** - the model is run several times with dropout active. Where the outputs disagree, the model is unsure. The case-level score is compared with a threshold fixed on validation data.
+- **Dice score** - overlap between two outlines, 0 to 1. Radiologists typically agree with each other at about 0.85-0.90.
         """)
+    if summary and sub_df is not None:
+        with st.expander("Validated performance"):
+            st.plotly_chart(fig_subsets(sub_df), width="stretch")
     st.caption("Built on the public BraTS 2020 dataset. Not a medical device; not for diagnosis or treatment decisions.")
 
 # ---------------- Results ----------------
@@ -400,130 +515,142 @@ else:
     v = pred.volumes_ml
     flagged = bool(thr and pred.case_uncertainty >= thr["threshold"])
     missing = [m for m in MODALITIES if m not in present]
+    if res["meshes"] is None:
+        with st.spinner("Building 3D surfaces"):
+            res["meshes"] = build_meshes(res)
 
-    st.markdown(f"#### Result")
     st.caption(st.session_state.source)
-
-    # verdict
     if flagged:
-        if simple:
-            st.error("Needs specialist review. The model's repeated outputs disagreed more than usual on this scan, so the outline may be unreliable.")
-        else:
-            st.error(f"Needs review: case uncertainty {pred.case_uncertainty:.4f} >= validated threshold {thr['threshold']:.4f} "
-                     f"(set on validation data via Youden's J to detect WT Dice < {thr.get('tau_fail')}).")
+        st.error(("Needs specialist review. The model's repeated outputs disagreed more than usual on this scan, so the outline may be unreliable." if simple else
+                  f"Needs review: case uncertainty {pred.case_uncertainty:.4f} >= validated threshold {thr['threshold']:.4f} (Youden's J on validation, failure = WT Dice < {thr.get('tau_fail')})."))
     elif thr:
-        if simple:
-            st.success("Confident result. The model's repeated outputs agreed closely. A specialist should still confirm it.")
-        else:
-            extra = f" On the test set, accepted cases averaged WT Dice {summary['review_flag']['dice_accepted']:.3f}." if summary else ""
-            st.success(f"Below review threshold: case uncertainty {pred.case_uncertainty:.4f} < {thr['threshold']:.4f}.{extra}")
+        extra = f" On the test set, accepted cases averaged WT Dice {summary['review_flag']['dice_accepted']:.3f}." if (summary and not simple) else ""
+        st.success(("Confident result. The model's repeated outputs agreed closely. A specialist should still confirm it." if simple else
+                    f"Below review threshold: case uncertainty {pred.case_uncertainty:.4f} < {thr['threshold']:.4f}.{extra}"))
     else:
         st.warning("No validated threshold found. Run scripts/evaluate.py to enable the review flag.")
 
-    # plain-language summary + key numbers
-    left, right = st.columns([1.15, 1])
-    with left:
-        if simple:
-            st.markdown(f"""**Summary**
-
-The model found an abnormal region of about **{plain_size(v['WT_ml'])}**, including swelling around the tumour.
-The solid tumour is about **{v['TC_ml']:.0f} mL**, of which **{v['ET_ml']:.0f} mL** is enhancing (active) tumour.
-
-Volumes are estimates from the model outline. 1 mL = 1 cm3.""")
-        else:
-            st.markdown(f"""**Case summary**
-
-- Modalities: {', '.join(m.upper() for m in present)}{'; missing: ' + ', '.join(m.upper() for m in missing) if missing else ''}
-- Input quality: {quality.status} (score {quality.score:.2f})
-- MC samples: {pred.mc_samples}; inference {res['infer_s']:.1f} s on {DEVICE}
-- Case uncertainty: {pred.case_uncertainty:.4f} (mean predictive entropy in tumour ROI)""")
-    with right:
-        k = st.columns(3)
-        k[0].metric("Whole tumour" if simple else "WT", f"{v['WT_ml']:.1f} mL", help="Everything abnormal, including swelling")
-        k[1].metric("Tumour core" if simple else "TC", f"{v['TC_ml']:.1f} mL", help="Solid tumour without the swelling")
-        k[2].metric("Active tumour" if simple else "ET", f"{v['ET_ml']:.1f} mL", help="Enhancing part - takes up contrast dye")
-        if metrics:
-            st.info(f"Agreement with expert outline (Dice): whole tumour {metrics['dice_WT']:.3f}, core {metrics['dice_TC']:.3f}, enhancing {metrics['dice_ET']:.3f}")
-
+    k = st.columns(5)
+    k[0].metric("Whole tumour", f"{v['WT_ml']:.1f} mL", help="Everything abnormal, including edema")
+    k[1].metric("Tumour core", f"{v['TC_ml']:.1f} mL", help="Solid tumour without edema")
+    k[2].metric("Enhancing tumour", f"{v['ET_ml']:.1f} mL", help="Takes up contrast dye; usually the most active part")
+    k[3].metric("Case uncertainty", f"{pred.case_uncertainty:.4f}", help="Mean predictive entropy in the tumour region over the repeated runs")
+    k[4].metric("Inference", f"{res['infer_s']:.1f} s", help=f"MC x{pred.mc_samples} on {DEVICE}")
+    if metrics:
+        st.info(f"Agreement with the expert outline (Dice): whole tumour {metrics['dice_WT']:.3f}, core {metrics['dice_TC']:.3f}, enhancing {metrics['dice_ET']:.3f}")
     if missing:
-        st.warning(f"Running without {', '.join(m.upper() for m in missing)}. Accuracy for the affected regions is lower; see the subset table under validated performance.")
-    if quality.status == "warn":
-        with st.expander(f"Scan quality: {len(quality.warnings())} warning(s)"):
-            for w in quality.warnings():
-                st.write("- " + w)
+        st.warning(f"Running without {', '.join(m.upper() for m in missing)}. Accuracy for the affected regions is lower; see the subset chart under Performance.")
 
-    # viewer
-    st.markdown("#### Slice viewer")
-    cA, cB = st.columns([1, 3])
-    base_mod = cA.selectbox("Background scan", present, index=present.index("flair") if "flair" in present else 0,
-                            format_func=lambda m: MOD_HELP[m].split(" - ")[0])
+    tab_slices, tab_3d, tab_unc, tab_perf, tab_report = st.tabs(["Slice viewer", "3D", "Uncertainty", "Performance", "Report"])
+
     tum_z = np.where(pred.regions[0].reshape(pred.regions.shape[1], -1).sum(1) > 0)[0]
     default_z = int(tum_z[len(tum_z) // 2]) if tum_z.size else img.shape[1] // 2
-    z = cB.slider("Axial slice", 0, img.shape[1] - 1, default_z)
-    st.pyplot(overlay_figure(img[MODALITIES.index(base_mod)], pred.labels, pred.entropy, z, simple), clear_figure=True)
-    st.caption("Red: necrotic / non-enhancing core. Green: edema (swelling). Yellow: enhancing tumour. Right panel: brighter = less certain, usually at the tumour edge.")
+    if "z" not in st.session_state:
+        st.session_state.z = default_z
 
-    if show_3d and pred.regions[0].sum() > 0:
-        st.markdown("#### 3D view")
-        st.caption("Drag to rotate, scroll to zoom.")
-        st.plotly_chart(plotly_3d(pred.regions), width="stretch")
+    with tab_slices:
+        a, b = st.columns([1, 2.2])
+        with a:
+            plane = st.radio("Plane", ["Axial", "Coronal", "Sagittal"], horizontal=True)
+            axis = ["Axial", "Coronal", "Sagittal"].index(plane)
+            base_mod = st.selectbox("Background sequence", present, index=present.index("flair") if "flair" in present else 0, format_func=lambda m: MOD_LABEL[m])
+            show_seg = st.checkbox("Tumour outline", True)
+            show_unc = st.checkbox("Uncertainty map", False, help="Brighter = the repeated runs disagreed more. Usually at the tumour edge.")
+            seg_alpha = st.slider("Outline opacity", 0.1, 1.0, 0.55)
+            unc_alpha = st.slider("Uncertainty opacity", 0.1, 1.0, 0.8) if show_unc else 0.8
+            show_gt = st.checkbox("Expert outline (cyan contour)", False) if (res["seg"] is not None and not simple) else False
+            st.caption("Red: necrotic / non-enhancing core. Green: edema. Yellow: enhancing tumour. Hover for a per-pixel readout; scroll to zoom, drag to pan.")
+        with b:
+            n = img.shape[1 + axis]
+            if axis == 0:
+                st.session_state.z = st.slider("Axial slice", 0, n - 1, st.session_state.z, key="z_axial")
+                i = st.session_state.z
+            else:
+                i = st.slider(f"{plane} slice", 0, n - 1, n // 2, key=f"z_{axis}")
+            base = take_slice(img[MODALITIES.index(base_mod)], axis, i)
+            labs = take_slice(pred.labels, axis, i)
+            ent = take_slice(pred.entropy, axis, i)
+            gt = take_slice(res["seg"], axis, i) if show_gt else None
+            st.plotly_chart(slice_figure(base, labs, ent, show_seg, show_unc, seg_alpha, unc_alpha, gt, f"{plane} slice {i} - {MOD_LABEL[base_mod]}"),
+                            width="stretch", config={"scrollZoom": True, "displaylogo": False})
 
-    # downloads
-    st.markdown("#### Download")
-    report = build_report(res, flagged, thr, model_info)
-    md = report_markdown(report)
-    d1, d2, d3 = st.columns(3)
-    d1.download_button("Report (.md)", md, file_name="neuroscope_report.md", width="stretch")
-    d2.download_button("Report (.json)", json.dumps(report, indent=2, default=float),
-                       file_name="neuroscope_report.json", width="stretch")
-    lab_full = uncrop(pred.labels, res["meta"]).astype(np.uint8)
-    lab_full[lab_full == 3] = 4
-    d3.download_button("Segmentation mask (.nii)", nib.Nifti1Image(lab_full, res["affine"]).to_bytes(),
-                       file_name="neuroscope_seg.nii", width="stretch")
-    with st.expander("Report preview"):
+    with tab_3d:
+        a, b = st.columns([1, 3])
+        with a:
+            st.markdown("**Layers**")
+            show = {"brain": st.checkbox("Brain surface", True)}
+            for nm in REGION_NAMES:
+                show[nm] = st.checkbox(nm, True)
+            show_plane = st.checkbox("MRI slice plane", True, help="Follows the axial slice slider")
+            opacity = st.slider("Tumour opacity", 0.2, 1.0, 0.85)
+            base3d = st.selectbox("Plane sequence", present, index=present.index("flair") if "flair" in present else 0, format_func=lambda m: MOD_LABEL[m], key="b3d")
+            if show_plane:
+                st.session_state.z = st.slider("Axial slice", 0, img.shape[1] - 1, st.session_state.z, key="z_3d")
+            st.caption("Drag to rotate, scroll to zoom, right-drag to pan. Surfaces are reconstructed from the model output with marching cubes." if HAVE_SKIMAGE
+                       else "Install scikit-image for smooth surfaces: pip install scikit-image")
+        with b:
+            if pred.regions[0].sum() == 0:
+                st.info("No tumour voxels predicted; nothing to render.")
+            else:
+                st.plotly_chart(fig_3d(res, st.session_state.z, show, opacity, show_plane, img[MODALITIES.index(base3d)]),
+                                width="stretch", config={"displaylogo": False})
+
+    with tab_unc:
+        a, b = st.columns([1.3, 1])
+        with a:
+            st.plotly_chart(fig_slice_profile(res, st.session_state.z), width="stretch")
+        with b:
+            st.plotly_chart(fig_volumes(pred), width="stretch")
+            if not simple:
+                mc_std = float(pred.mc_std[pred.regions[0] > 0].mean()) if pred.regions[0].sum() else 0.0
+                st.markdown(f"- Mean entropy in tumour ROI: **{pred.case_uncertainty:.4f}**  \n- Mean MC std in ROI: **{mc_std:.4f}**  \n- MC samples: **{pred.mc_samples}**")
+        if test_df is not None and thr:
+            st.plotly_chart(fig_case_vs_test(test_df, thr, pred.case_uncertainty, metrics["dice_WT"] if metrics else None), width="stretch")
+            st.caption("Each dot is one held-out test patient. The uncertainty score rises as outline quality falls, which is what lets the review flag work. "
+                       "The star (or the vertical line when no ground truth is available) shows where this case sits.")
+
+    with tab_perf:
+        if summary:
+            if simple:
+                st.markdown(f"Tested on **{summary.get('n_test')}** patients held out from training. Overlap with expert outlines (Dice): whole tumour "
+                            f"**{summary['dice_WT']['mean']:.3f}**, core **{summary['dice_TC']['mean']:.3f}**, enhancing **{summary['dice_ET']['mean']:.3f}**. "
+                            f"The uncertainty score separated poor outlines from good ones with AUROC **{summary['reliability']['failure_auroc']:.3f}**.")
+            else:
+                st.json({k: summary[k] for k in ["n_test", "n_val", "mc_samples", "dice_WT", "dice_TC", "dice_ET", "hd95_WT", "sensitivity_WT",
+                                                 "specificity_WT", "reliability", "review_flag"] if k in summary}, expanded=False)
+            if sub_df is not None:
+                st.plotly_chart(fig_subsets(sub_df), width="stretch")
+            cols = st.columns(2)
+            if hist_df is not None:
+                cols[0].plotly_chart(fig_history(hist_df), width="stretch")
+            p = os.path.join(results_dir, "fig_risk_coverage.png")
+            if os.path.exists(p):
+                cols[1].image(p, caption="Risk-coverage: Dice of accepted cases as the review flag rejects more")
+        else:
+            st.write("No results/summary.json found. Run scripts/evaluate.py.")
+        st.markdown("""
+**Model.** 2D U-Net, 7.8M parameters, trained with modality dropout so it works with any subset of the four sequences.
+Uncertainty from Monte Carlo dropout: the network runs several times and the disagreement (predictive entropy) is measured.
+The review threshold was fixed on the validation set and never tuned on the test set.
+
+**Limitations.** Trained on BraTS 2020 (adult glioma, skull-stripped, co-registered, 1 mm isotropic). Not validated on other tumour types,
+scanners, children, or post-operative scans. Uncertainty measures model disagreement, not correctness. Research prototype for
+human-in-the-loop review, not a diagnostic device.
+        """)
+
+    with tab_report:
+        report = build_report(res, flagged, thr, model_info)
+        md = report_markdown(report)
+        d1, d2, d3 = st.columns(3)
+        d1.download_button("Report (.md)", md, file_name="neuroscope_report.md", width="stretch")
+        d2.download_button("Report (.json)", json.dumps(report, indent=2, default=float), file_name="neuroscope_report.json", width="stretch")
+        lab_full = uncrop(pred.labels, res["meta"]).astype(np.uint8)
+        lab_full[lab_full == 3] = 4
+        d3.download_button("Segmentation mask (.nii)", nib.Nifti1Image(lab_full, res["affine"]).to_bytes(), file_name="neuroscope_seg.nii", width="stretch")
         st.markdown(md)
 
     if st.button("Clear"):
         st.session_state.result = None
         st.rerun()
 
-# ---------------- Model card ----------------
-st.markdown("")
-with st.expander("Validated performance and model card", expanded=False):
-    if summary:
-        if simple:
-            st.markdown(f"""
-Tested on {summary.get('n_test')} patients held out from training. Overlap with expert outlines (Dice):
-whole tumour {summary['dice_WT']['mean']:.3f}, core {summary['dice_TC']['mean']:.3f}, enhancing {summary['dice_ET']['mean']:.3f}.
-The uncertainty score separated poor outlines from good ones with AUROC {summary['reliability']['failure_auroc']:.3f},
-which is what the review flag is based on.
-            """)
-        else:
-            st.json({k: summary[k] for k in ["n_test", "n_val", "mc_samples", "dice_WT", "dice_TC", "dice_ET", "hd95_WT",
-                                             "sensitivity_WT", "specificity_WT", "reliability", "review_flag"] if k in summary})
-            st.write({"checkpoint_epoch": model_info.get("epoch"), "val_at_checkpoint": model_info.get("val")})
-        sub_csv = os.path.join(results_dir, "subsets.csv")
-        if os.path.exists(sub_csv):
-            import pandas as pd
-            st.markdown("Dice on the test set for every combination of the four sequences:")
-            df = pd.read_csv(sub_csv)[["subset", "n_modalities", "dice_WT", "dice_TC", "dice_ET", "uncertainty", "flag_rate"]].round(3)
-            st.dataframe(df, width="stretch", hide_index=True)
-        figs = [("fig_subsets.png", "Dice per modality subset"), ("fig_uncertainty_vs_dice.png", "Uncertainty vs Dice (per test patient)"),
-                ("fig_risk_coverage.png", "Risk-coverage curve")]
-        cols = st.columns(3)
-        for col, (f, cap) in zip(cols, figs):
-            p = os.path.join(results_dir, f)
-            if os.path.exists(p):
-                col.image(p, caption=cap)
-    else:
-        st.write("No results/summary.json found - run scripts/evaluate.py.")
-    st.markdown("""
-**Model.** 2D U-Net (7.8 M parameters), trained with *modality dropout* so it learns to work with any subset of the four MRI sequences.
-Confidence comes from Monte Carlo dropout: the network is run several times and the disagreement (predictive entropy) is measured.
-The review threshold was fixed on the validation set and never tuned on the test set.
-
-**Limitations.** Trained on BraTS 2020 (adult glioma, skull-stripped, co-registered, 1 mm isotropic). Not validated on other
-tumour types, scanners, children, or post-operative scans. Uncertainty measures model disagreement, not correctness.
-This is a research prototype for human-in-the-loop review, **not a diagnostic device**.
-    """)
 st.caption("NeuroScope. Research prototype built on BraTS 2020. Not a medical device.")
