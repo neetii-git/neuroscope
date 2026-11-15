@@ -99,6 +99,25 @@ Upload any subset of the four sequences (optionally the ground-truth mask to see
 
 Fill in the numbers from your run here once it finishes.
 
+
+### Using the app
+
+```bash
+python -m streamlit run app/app.py
+```
+
+The interface has two modes, switched in the sidebar:
+
+- **Patient / first-time user** — plain-language explanations, a guided 3-step flow, and a clear verdict
+  ("confident" vs "needs a specialist's review"). No jargon, no knobs.
+- **Clinician / researcher** — full detail: per-region Dice, case uncertainty vs the validated threshold,
+  input-quality checks, MC-sample control, ground-truth upload, and the complete model card with the
+  15-subset table and reliability plots.
+
+The validated test-set numbers (Dice, failure-detection AUROC, review-flag sensitivity/specificity, GPU
+inference time) are shown on the landing page, read live from `runs/base/results/summary.json`.
+The bundled example patient is cached after its first run, so repeat demos are instant.
+
 ## Design decisions (short)
 
 - **2D not 3D.** A 3D U-Net at BraTS resolution needs a day of 16 GB-GPU time per model; the goal here is the
