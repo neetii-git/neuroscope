@@ -297,7 +297,7 @@ def fig_case_vs_test(test_df: pd.DataFrame, thr: Dict, case_u: float, case_dice:
     fig.add_trace(go.Scatter(x=test_df["uncertainty"][fail], y=test_df["dice_WT"][fail], mode="markers", name=f"test patients, Dice < {tau}",
                              marker=dict(color="#8B3A3A", size=9, symbol="x"), text=ids[fail],
                              hovertemplate="%{text}<br>uncertainty %{x:.4f}<br>Dice %{y:.3f}<extra></extra>"))
-    fig.add_vline(x=thr["threshold"], line=dict(color="#1E2A1F", dash="dash"), annotation_text="review threshold", annotation_position="top right")
+    fig.add_vline(x=thr["threshold"], line=dict(color="#1E2A1F", dash="dash"), annotation_text="threshold", annotation_position="top right")
     if case_dice is not None:
         fig.add_trace(go.Scatter(x=[case_u], y=[case_dice], mode="markers", name="this case", marker=dict(color=ACCENT, size=18, symbol="star", line=dict(color="#1E2A1F", width=1))))
     else:
@@ -494,6 +494,20 @@ res = st.session_state.result
 
 # ---------------- Landing ----------------
 if res is None:
+    st.markdown("#### What is different from a standard segmentation model")
+    st.table(pd.DataFrame({
+        "": ["Input", "Output", "Self-assessment", "Bad scans", "Evidence"],
+        "Typical U-Net demo": ["Needs all four sequences; fails or degrades silently if one is missing",
+                               "An outline, presented as fact",
+                               "None. A wrong outline looks exactly like a right one",
+                               "Accepted without checks",
+                               "A single Dice number on an unspecified split"],
+        "NeuroScope": ["Any of the 15 sequence combinations; trained with modality dropout and tested on every subset",
+                       "Outline, volumes, and a per-pixel uncertainty map",
+                       "Case-level uncertainty compared with a threshold fixed on validation data; the case is flagged for a specialist when it is unreliable",
+                       "Quality gate: missing sequences, shape, brain fraction, SNR, saturation, slice dropout",
+                       "74 held-out patients, bootstrap confidence intervals, failure-detection AUROC, risk-coverage curve, per-case data in the app"],
+    }).set_index(""))
     st.markdown("#### How to use")
     st.markdown("""
 1. **Scans** - click *Load example patient* in the sidebar, or upload your own MRI files. Missing sequences are allowed.
@@ -545,7 +559,7 @@ else:
     if missing:
         st.warning(f"Running without {', '.join(m.upper() for m in missing)}. Accuracy for the affected regions is lower; see the subset chart under Performance.")
 
-    tab_slices, tab_3d, tab_unc, tab_perf, tab_report = st.tabs(["Slice viewer", "3D", "Uncertainty", "Performance", "Report"])
+    tab_slices, tab_3d, tab_unc, tab_rob, tab_perf, tab_report = st.tabs(["Slice viewer", "3D", "Uncertainty", "Missing sequences", "Performance", "Report"])
 
     tum_z = np.where(pred.regions[0].reshape(pred.regions.shape[1], -1).sum(1) > 0)[0]
     default_z = int(tum_z[len(tum_z) // 2]) if tum_z.size else img.shape[1] // 2
@@ -609,9 +623,58 @@ else:
                 mc_std = float(pred.mc_std[pred.regions[0] > 0].mean()) if pred.regions[0].sum() else 0.0
                 st.markdown(f"- Mean entropy in tumour ROI: **{pred.case_uncertainty:.4f}**  \n- Mean MC std in ROI: **{mc_std:.4f}**  \n- MC samples: **{pred.mc_samples}**")
         if test_df is not None and thr:
-            st.plotly_chart(fig_case_vs_test(test_df, thr, pred.case_uncertainty, metrics["dice_WT"] if metrics else None), width="stretch")
-            st.caption("Each dot is one held-out test patient. The uncertainty score rises as outline quality falls, which is what lets the review flag work. "
-                       "The star (or the vertical line when no ground truth is available) shows where this case sits.")
+            st.markdown("**Review threshold, live on the test set**")
+            st.caption("Drag the threshold. Everything to its right is sent for specialist review. The validated setting is marked; it was chosen on the validation set, not here.")
+            umax = float(test_df["uncertainty"].max())
+            t_live = st.slider("Threshold (case uncertainty)", 0.0, round(umax * 1.05, 3), float(thr["threshold"]), step=0.001, format="%.3f")
+            tau = thr.get("tau_fail", 0.75)
+            fl = test_df["uncertainty"] >= t_live
+            bad = test_df["dice_WT"] < tau
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Sent for review", f"{100*fl.mean():.0f}%", help="Share of test patients flagged at this threshold")
+            m2.metric("Poor outlines caught", f"{int((fl & bad).sum())} of {int(bad.sum())}", help=f"Cases with WT Dice < {tau} that are flagged")
+            m3.metric("Dice of accepted cases", f"{test_df['dice_WT'][~fl].mean():.3f}" if (~fl).any() else "n/a", help="Mean WT Dice of cases not flagged")
+            m4.metric("This case", "flagged" if pred.case_uncertainty >= t_live else "accepted")
+            thr_live = dict(thr, threshold=t_live)
+            st.plotly_chart(fig_case_vs_test(test_df, thr_live, pred.case_uncertainty, metrics["dice_WT"] if metrics else None), width="stretch")
+            st.caption(f"Each dot is one held-out test patient; crosses are poor outlines (WT Dice < {tau}). Uncertainty rises as outline quality falls, "
+                       f"which is what lets the flag work. Validated threshold: {thr['threshold']:.4f}. The star (or vertical line without ground truth) is this case.")
+
+    with tab_rob:
+        st.markdown("**Same patient, fewer scans.** Most models need all four sequences. Run this patient again with some removed and compare.")
+        if st.session_state.source and st.session_state.source.startswith("Example patient"):
+            cA, cB = st.columns([2, 1])
+            drop2 = cA.multiselect("Remove sequences", MODALITIES, default=["t1ce"], format_func=lambda m: MOD_LABEL[m], key="drop2")
+            go_rob = cB.button("Run comparison", type="primary", width="stretch", disabled=(len(drop2) == 0 or len(drop2) == 4))
+            if go_rob:
+                with st.spinner("Running the reduced-input case (first time 1-2 min on CPU; cached afterwards)"):
+                    st.session_state.rob = (tuple(drop2), run_demo_inference(ARGS.demo_dir, mc, ckpt_path, tuple(drop2)))
+                full = run_demo_inference(ARGS.demo_dir, mc, ckpt_path, ())
+                st.session_state.rob_full = full
+            if st.session_state.get("rob"):
+                dr, r2 = st.session_state.rob
+                full = st.session_state.get("rob_full") or res
+                p1, p2 = full["pred"], r2["pred"]
+                rows = [("Sequences", "T1, T1ce, T2, FLAIR", ", ".join(MOD_LABEL[m] for m in r2["present"]))]
+                for nm, kk in zip(REGION_NAMES, REGION_KEYS):
+                    rows.append((f"{nm} (mL)", f"{p1.volumes_ml[kk]:.1f}", f"{p2.volumes_ml[kk]:.1f}"))
+                if full["metrics"] and r2["metrics"]:
+                    for nm, kk in zip(REGION_NAMES, ["dice_WT", "dice_TC", "dice_ET"]):
+                        rows.append((f"Dice vs expert, {nm.lower()}", f"{full['metrics'][kk]:.3f}", f"{r2['metrics'][kk]:.3f}"))
+                rows.append(("Case uncertainty", f"{p1.case_uncertainty:.4f}", f"{p2.case_uncertainty:.4f}"))
+                f1 = bool(thr and p1.case_uncertainty >= thr["threshold"]); f2 = bool(thr and p2.case_uncertainty >= thr["threshold"])
+                rows.append(("Review flag", "flagged" if f1 else "accepted", "flagged" if f2 else "accepted"))
+                st.table(pd.DataFrame(rows, columns=["", "All four sequences", "Without " + ", ".join(m.upper() for m in dr)]).set_index(""))
+                zc = st.session_state.z
+                bm = "flair" if "flair" in r2["present"] else r2["present"][0]
+                g1, g2 = st.columns(2)
+                g1.plotly_chart(key="rob_a", figure_or_data=slice_figure(full["img"][MODALITIES.index(bm)][zc], p1.labels[zc], p1.entropy[zc], True, True, 0.55, 0.8, None, f"All four, slice {zc}"), width="stretch")
+                g2.plotly_chart(key="rob_b", figure_or_data=slice_figure(r2["img"][MODALITIES.index(bm)][zc], p2.labels[zc], p2.entropy[zc], True, True, 0.55, 0.8, None, f"Without {', '.join(m.upper() for m in dr)}, slice {zc}"), width="stretch")
+                st.caption("Uncertainty is shown as the purple glow. When a sequence is missing, the model usually becomes less certain in exactly the regions that depend on it, which is the intended behaviour.")
+        else:
+            st.info("Available for the example patient. For uploaded scans, simply leave out a file in the sidebar and run again.")
+        if sub_df is not None:
+            st.plotly_chart(fig_subsets(sub_df), width="stretch", key="subsets_rob")
 
     with tab_perf:
         if summary:
@@ -623,7 +686,7 @@ else:
                 st.json({k: summary[k] for k in ["n_test", "n_val", "mc_samples", "dice_WT", "dice_TC", "dice_ET", "hd95_WT", "sensitivity_WT",
                                                  "specificity_WT", "reliability", "review_flag"] if k in summary}, expanded=False)
             if sub_df is not None:
-                st.plotly_chart(fig_subsets(sub_df), width="stretch")
+                st.plotly_chart(fig_subsets(sub_df), width="stretch", key="subsets_perf")
             cols = st.columns(2)
             if hist_df is not None:
                 cols[0].plotly_chart(fig_history(hist_df), width="stretch")
