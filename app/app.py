@@ -1,4 +1,4 @@
-"""NeuroScope — brain tumour MRI analysis with built-in self-checks (research prototype).
+"""NeuroScope - brain tumour MRI analysis with built-in self-checks (research prototype).
 
 Run:  python -m streamlit run app/app.py
 Optional: -- --ckpt runs/base/best.pt --results runs/base/results --demo-dir demo_case
@@ -36,10 +36,10 @@ from neuroscope.quality.iqa import assess_case  # noqa: E402
 LABEL_COLORS = {1: (0.86, 0.15, 0.15), 2: (0.16, 0.65, 0.35), 3: (0.98, 0.75, 0.14)}
 LABEL_NAMES = {1: "Dead / non-enhancing core", 2: "Swelling (edema)", 3: "Active (enhancing) tumour"}
 MOD_HELP = {
-    "t1": "T1 — basic anatomy scan",
-    "t1ce": "T1ce — T1 with contrast dye (shows active tumour)",
-    "t2": "T2 — fluid-sensitive scan",
-    "flair": "FLAIR — shows swelling around the tumour",
+    "t1": "T1 - basic anatomy scan",
+    "t1ce": "T1ce - T1 with contrast dye (shows active tumour)",
+    "t2": "T2 - fluid-sensitive scan",
+    "flair": "FLAIR - shows swelling around the tumour",
 }
 BRAIN_ML = 1300.0  # typical adult brain volume, for plain-language context only
 
@@ -66,38 +66,7 @@ if DEVICE == "cpu":
 CSS = """
 <style>
 #MainMenu, footer {visibility: hidden;}
-.block-container {padding-top: 1.2rem; padding-bottom: 2rem; max-width: 1250px;}
-section[data-testid="stSidebar"] {background: #FFFFFF; border-right: 1px solid #E2E8F0;}
-.ns-hero {background: linear-gradient(120deg, #0F766E 0%, #115E59 55%, #0B3B5A 100%);
-          color: white; border-radius: 18px; padding: 28px 32px; margin-bottom: 14px;
-          box-shadow: 0 10px 30px rgba(15,118,110,0.25);}
-.ns-hero h1 {color: white; font-size: 2.2rem; margin: 0 0 6px 0; letter-spacing: -0.02em;}
-.ns-hero p {color: #E6FFFA; font-size: 1.08rem; margin: 0; max-width: 820px;}
-.ns-pill {display: inline-block; background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.35);
-          padding: 4px 12px; border-radius: 999px; font-size: 0.8rem; margin: 10px 8px 0 0; color: white;}
-.ns-stat {background: white; border: 1px solid #E2E8F0; border-radius: 14px; padding: 16px 18px; height: 100%;
-          box-shadow: 0 2px 8px rgba(2,6,23,0.04);}
-.ns-stat .v {font-size: 1.9rem; font-weight: 700; color: #0F172A; line-height: 1.1;}
-.ns-stat .k {font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: #64748B; margin-bottom: 6px;}
-.ns-stat .s {font-size: 0.82rem; color: #475569; margin-top: 6px;}
-.ns-step {background: white; border: 1px solid #E2E8F0; border-radius: 14px; padding: 16px 18px; height: 100%;}
-.ns-step .n {display: inline-block; width: 28px; height: 28px; border-radius: 50%; background: #0F766E; color: white;
-             text-align: center; line-height: 28px; font-weight: 700; margin-right: 8px;}
-.ns-step b {font-size: 1rem;}
-.ns-step p {color: #475569; font-size: 0.9rem; margin: 8px 0 0 0;}
-.ns-banner {border-radius: 14px; padding: 18px 22px; margin: 6px 0 12px 0; font-size: 1.05rem; border: 1px solid;}
-.ns-ok {background: #ECFDF5; border-color: #A7F3D0; color: #065F46;}
-.ns-warn {background: #FFF7ED; border-color: #FED7AA; color: #9A3412;}
-.ns-bad {background: #FEF2F2; border-color: #FECACA; color: #991B1B;}
-.ns-banner h3 {margin: 0 0 4px 0; font-size: 1.25rem; color: inherit;}
-.ns-card {background: white; border: 1px solid #E2E8F0; border-radius: 14px; padding: 18px 20px; margin-bottom: 12px;}
-.ns-card h4 {margin: 0 0 10px 0; color: #0F172A;}
-.ns-legend span {display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin: 0 6px 0 14px; vertical-align: middle;}
-.ns-note {font-size: 0.85rem; color: #64748B;}
-.ns-foot {font-size: 0.8rem; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 10px; margin-top: 24px;}
-div[data-testid="stMetric"] {background: white; border: 1px solid #E2E8F0; border-radius: 12px; padding: 12px 14px;}
-.stButton > button[kind="primary"] {border-radius: 10px; font-weight: 600; padding: 0.6rem 1.2rem;}
-.stDownloadButton > button {border-radius: 10px;}
+.block-container {padding-top: 1.5rem; max-width: 1200px;}
 </style>
 """
 
@@ -221,7 +190,7 @@ def plotly_3d(regions: np.ndarray, step: int = 2):
 def build_report(res, flagged, thr, model_info) -> Dict:
     pred, quality = res["pred"], res["quality"]
     return {
-        "tool": "NeuroScope research prototype — NOT a medical device; outputs require expert review",
+        "tool": "NeuroScope research prototype - NOT a medical device; outputs require expert review",
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "modalities_used": res["present"],
         "modalities_missing": [m for m in MODALITIES if m not in res["present"]],
@@ -281,7 +250,7 @@ def fmt_ci(d):
     if not d:
         return None, ""
     lo, hi = d.get("ci95", [None, None])
-    return d["mean"], (f"95% CI {lo:.2f}–{hi:.2f}" if lo is not None else "")
+    return d["mean"], (f"95% CI {lo:.2f}-{hi:.2f}" if lo is not None else "")
 
 
 def plain_size(ml: float) -> str:
@@ -292,7 +261,7 @@ def plain_size(ml: float) -> str:
 # ================================================================================================
 # Page
 # ================================================================================================
-st.set_page_config(page_title="NeuroScope — Brain tumour MRI analysis", page_icon="🧠", layout="wide",
+st.set_page_config(page_title="NeuroScope - Brain tumour MRI analysis", layout="wide",
                    initial_sidebar_state="expanded")
 st.markdown(CSS, unsafe_allow_html=True)
 
@@ -301,33 +270,32 @@ thr = load_json(os.path.join(ARGS.results, "threshold.json"))
 
 # ---------------- Sidebar ----------------
 with st.sidebar:
-    st.markdown("### 🧠 NeuroScope")
-    mode = st.radio("I am a…", ["Patient / first-time user", "Clinician / researcher"], index=0,
-                    help="Changes how much technical detail is shown. The analysis is identical.")
-    simple = mode.startswith("Patient")
+    st.markdown("### NeuroScope")
+    mode = st.radio("View", ["Simple", "Detailed"], index=0, help="Simple hides the technical numbers. The analysis is the same.")
+    simple = mode == "Simple"
     st.divider()
 
-    st.markdown("#### 1 · Choose the scans")
+    st.markdown("**Step 1. Choose scans**")
     has_demo = os.path.isdir(ARGS.demo_dir)
-    use_demo = st.button("▶ Try the example patient", type="primary", width="stretch",
-                         disabled=not has_demo, help="A real anonymised case from the public BraTS 2020 test split")
-    st.caption("…or upload your own MRI files (.nii / .nii.gz). Any subset of the four scans works.")
+    use_demo = st.button("Load example patient", type="primary", width="stretch",
+                         disabled=not has_demo, help="An anonymised case from the BraTS 2020 test split")
+    st.caption("Or upload MRI files (.nii / .nii.gz). Any subset of the four scans works.")
     uploads = {m: st.file_uploader(MOD_HELP[m], type=["nii", "gz"], key=m) for m in MODALITIES}
     seg_upload = None
     if not simple:
         seg_upload = st.file_uploader("Ground-truth mask (optional, for evaluation)", type=["nii", "gz"], key="seg")
 
-    st.markdown("#### 2 · Run")
+    st.markdown("**Step 2. Run**")
     mc_default = 4 if DEVICE == "cpu" else 8
     if simple:
         mc = mc_default
-        st.caption(f"Running on **{DEVICE.upper()}**. The AI checks each scan {mc} times to measure its own confidence.")
+        st.caption(f"Device: {DEVICE}. The model is run {mc} times per scan to estimate confidence.")
     else:
         mc = st.slider("Monte Carlo dropout samples", 1, 16, mc_default,
-                       help="More samples → better uncertainty estimate, slower. Validated at 8.")
+                       help="More samples give a better uncertainty estimate, slower. Validated at 8.")
         st.caption(f"Device: `{DEVICE}`")
     run = st.button("Analyse uploaded scans", width="stretch")
-    show_3d = st.checkbox("Show 3D tumour view", value=True)
+    show_3d = st.checkbox("3D view", value=True)
 
     with st.expander("Advanced"):
         ckpt_path = st.text_input("Checkpoint", ARGS.ckpt)
@@ -336,15 +304,11 @@ with st.sidebar:
             summary = load_json(os.path.join(results_dir, "summary.json"))
             thr = load_json(os.path.join(results_dir, "threshold.json"))
 
-# ---------------- Hero ----------------
-pills = ["Works even if some scans are missing", "Tells you when it is unsure", "Checks scan quality before analysing",
-         "Research prototype · not a medical device"]
-st.markdown(
-    '<div class="ns-hero"><h1>NeuroScope</h1>'
-    '<p>AI that outlines a brain tumour on an MRI in seconds, measures its size, and — unlike most AI tools — '
-    '<b>tells you how sure it is</b>, so a doctor knows which results to double-check.</p>'
-    + "".join(f'<span class="ns-pill">{p}</span>' for p in pills) + "</div>",
-    unsafe_allow_html=True)
+# ---------------- Header ----------------
+st.title("NeuroScope")
+st.markdown("Brain tumour segmentation from MRI, with an uncertainty estimate that says when the result should be checked by a specialist. "
+            "Works with any subset of the four standard MRI sequences. Research prototype, not a medical device.")
+st.markdown("")
 
 # ---------------- Validated performance strip ----------------
 if summary:
@@ -357,19 +321,18 @@ if summary:
     inf, _ = fmt_ci(summary.get("infer_s"))
     c = st.columns(4)
     if simple:
-        stat(c[0], "Accuracy on unseen patients", f"{100*dwt:.0f}%", f"Overlap with expert outlines, tested on {n_test} patients it never saw")
-        stat(c[1], "Catches its own mistakes", f"{100*rel.get('failure_auroc', float('nan')):.0f}%",
-             f"How reliably it flags its weak results for a doctor ({flag.get('flag_sensitivity', float('nan'))*100:.0f}% of failures caught)")
-        stat(c[2], "Incomplete scans", "15 / 15", "Every combination of the 4 MRI types still produces a result")
-        stat(c[3], "Speed per patient", f"{inf:.1f} s" if inf else "—", "On a standard GPU, incl. the confidence check")
+        c[0].metric("Overlap with expert outlines", f"{100*dwt:.0f}%", help=f"Dice score, whole tumour, on {n_test} test patients the model never saw")
+        c[1].metric("Weak results detected", f"{100*rel.get('failure_auroc', float('nan')):.0f}%", help="How well the confidence score separates good from poor outlines (AUROC)")
+        c[2].metric("Scan combinations supported", "15 of 15", help="Any subset of T1, T1ce, T2, FLAIR")
+        c[3].metric("Time per patient (GPU)", f"{inf:.1f} s" if inf else "n/a", help="Including the repeated runs for the confidence estimate")
+        st.caption(f"Measured on {n_test} held-out BraTS 2020 patients. Details under 'Validated performance' at the bottom of the page.")
     else:
-        stat(c[0], "Test Dice · WT / TC / ET", f"{dwt:.3f} / {dtc:.3f} / {det:.3f}", f"n = {n_test} held-out patients · {dwt_ci}")
-        stat(c[1], "Failure-detection AUROC", f"{rel.get('failure_auroc', float('nan')):.3f}",
-             f"Spearman ρ(uncertainty, Dice) = {rel.get('spearman_rho', float('nan')):.2f} · AURC {rel.get('aurc', float('nan')):.3f}")
-        stat(c[2], "Review flag", f"{100*flag.get('flag_rate', float('nan')):.0f}% flagged",
-             f"Sens {flag.get('flag_sensitivity', float('nan')):.2f} · Spec {flag.get('flag_specificity', float('nan')):.2f} · "
-             f"Dice accepted {flag.get('dice_accepted', float('nan')):.3f}")
-        stat(c[3], "Inference", f"{inf:.1f} s / case" if inf else "—", f"MC ×{summary.get('mc_samples')} on GPU · 7.8 M params")
+        c[0].metric("Test Dice WT / TC / ET", f"{dwt:.3f} / {dtc:.3f} / {det:.3f}", help=f"n = {n_test}, {dwt_ci} (WT)")
+        c[1].metric("Failure-detection AUROC", f"{rel.get('failure_auroc', float('nan')):.3f}",
+                    help=f"Spearman rho(uncertainty, Dice) = {rel.get('spearman_rho', float('nan')):.2f}, AURC {rel.get('aurc', float('nan')):.3f}")
+        c[2].metric("Review flag rate", f"{100*flag.get('flag_rate', float('nan')):.0f}%",
+                    help=f"Sensitivity {flag.get('flag_sensitivity', float('nan')):.2f}, specificity {flag.get('flag_specificity', float('nan')):.2f}, Dice on accepted cases {flag.get('dice_accepted', float('nan')):.3f}")
+        c[3].metric("Inference per case (GPU)", f"{inf:.1f} s" if inf else "n/a", help=f"MC x{summary.get('mc_samples')}, 7.8M parameters")
     st.markdown("")
 
 # ---------------- Load model ----------------
@@ -384,12 +347,11 @@ if "result" not in st.session_state:
     st.session_state.source = None
 
 if use_demo:
-    with st.status("Analysing the example patient…", expanded=True) as status:
-        st.write("Loading the four MRI scans")
-        st.write("Checking scan quality")
-        st.write(f"Running the AI {mc} times to measure confidence (first run on CPU can take 1–2 min; later runs are instant)")
+    with st.status("Analysing example patient", expanded=True) as status:
+        st.write("Loading scans and checking quality")
+        st.write(f"Running the model {mc} times (first run on CPU takes 1-2 min; later runs are cached)")
         st.session_state.result = run_demo_inference(ARGS.demo_dir, mc, ckpt_path)
-        st.session_state.source = "Example patient (BraTS 2020, held-out test split)"
+        st.session_state.source = "Example patient (BraTS 2020 test split)"
         status.update(label="Analysis complete", state="complete", expanded=False)
 elif run:
     vols, affine = {}, np.eye(4)
@@ -400,15 +362,14 @@ elif run:
     if seg_upload is not None:
         vols["seg"] = remap_labels(read_upload(seg_upload)[0].astype(np.int16))
     if not vols:
-        st.warning("Please upload at least one MRI scan in the sidebar, or try the example patient.")
+        st.warning("Upload at least one MRI scan, or load the example patient.")
     else:
         q = assess_case({m: vols.get(m) for m in MODALITIES})
         if q.status == "fail":
-            st.error("These scans did not pass the quality check, so the AI will not analyse them: " + "; ".join(q.warnings()))
+            st.error("Scans failed the quality check: " + "; ".join(q.warnings()))
             st.stop()
-        with st.status("Analysing your scans…", expanded=True) as status:
-            st.write("Checking scan quality")
-            st.write(f"Running the AI {mc} times to measure confidence")
+        with st.status("Analysing scans", expanded=True) as status:
+            st.write(f"Checking quality, then running the model {mc} times")
             st.session_state.result = _run_case(vols, affine, mc, ckpt_path)
             st.session_state.source = "Uploaded scans"
             status.update(label="Analysis complete", state="complete", expanded=False)
@@ -417,28 +378,21 @@ res = st.session_state.result
 
 # ---------------- Empty state: how it works ----------------
 if res is None:
-    st.markdown("#### How it works")
-    s = st.columns(3)
-    steps = [("Choose the scans", "Click <b>Try the example patient</b> in the left panel, or upload MRI files. "
-                                  "Don't have all four scan types? That's fine — NeuroScope was trained to cope with missing ones."),
-             ("The AI analyses them", "It first checks the scans are usable, then outlines the tumour and runs itself several "
-                                       "times to see how much its answers disagree. Big disagreement = low confidence."),
-             ("Read the result", "You get the tumour's size, a picture of where it is, and a clear verdict: "
-                                 "<b>confident</b> or <b>needs a specialist's review</b>. Download a report to share.")]
-    for col, (i, (t, d)) in zip(s, enumerate(steps, 1)):
-        col.markdown(f'<div class="ns-step"><span class="n">{i}</span><b>{t}</b><p>{d}</p></div>', unsafe_allow_html=True)
-    st.markdown("")
-    with st.expander("What do the words mean?  (plain-language glossary)"):
+    st.markdown("#### How to use")
+    st.markdown("""
+1. **Choose scans** - click *Load example patient* in the sidebar, or upload your own MRI files. Missing sequences are allowed.
+2. **Run** - the app checks scan quality, segments the tumour, and runs the model several times to measure how much its answers vary.
+3. **Read the result** - tumour volumes, a slice viewer, a 3D view, and a verdict: *confident* or *needs specialist review*. A report can be downloaded.
+    """)
+    with st.expander("Glossary"):
         st.markdown("""
-- **MRI** — a scan that takes detailed pictures of the brain without radiation. Doctors usually take four *types* (T1, T1ce, T2, FLAIR); each highlights different tissue.
-- **Segmentation** — drawing an outline around the tumour on every slice of the scan. Done by hand it takes a radiologist 20–60 minutes; NeuroScope does it in seconds.
-- **Whole tumour / core / active tumour** — three nested regions: everything abnormal including swelling; the solid centre; and the part that lights up with contrast dye (usually the most aggressive).
-- **Uncertainty / confidence** — NeuroScope runs the AI several times with small random changes. If the answers agree, it is confident. If they disagree, it says so and asks for a human to check.
-- **Dice score** — how well two outlines overlap, from 0 (no overlap) to 1 (identical). Expert radiologists typically agree with each other at about 0.85–0.90.
+- **MRI sequences (T1, T1ce, T2, FLAIR)** - four scan types taken in the same session; each shows different tissue. T1ce uses contrast dye and shows active tumour; FLAIR shows swelling.
+- **Segmentation** - outlining the tumour on every slice. Done manually this takes a radiologist roughly 20-60 minutes.
+- **Whole tumour / tumour core / enhancing tumour** - everything abnormal including swelling; the solid centre; the part that takes up contrast dye.
+- **Uncertainty** - the model is run several times with dropout switched on. If the outputs disagree, the case is flagged for review. The flag threshold was fixed on validation data.
+- **Dice score** - overlap between two outlines, 0 to 1. Radiologists agree with each other at roughly 0.85-0.90.
         """)
-    st.markdown('<p class="ns-foot">NeuroScope is a research and decision-support prototype built on the public BraTS 2020 dataset. '
-                'It is not a medical device and must not be used to make a diagnosis or treatment decision on its own.</p>',
-                unsafe_allow_html=True)
+    st.caption("Built on the public BraTS 2020 dataset. Not a medical device; not for diagnosis or treatment decisions.")
 
 # ---------------- Results ----------------
 else:
@@ -447,106 +401,102 @@ else:
     flagged = bool(thr and pred.case_uncertainty >= thr["threshold"])
     missing = [m for m in MODALITIES if m not in present]
 
-    st.markdown(f"#### Result · <span class='ns-note'>{st.session_state.source}</span>", unsafe_allow_html=True)
+    st.markdown(f"#### Result")
+    st.caption(st.session_state.source)
 
-    # verdict banner
+    # verdict
     if flagged:
-        cls, head = "ns-bad", "⚠️ Needs a specialist's review"
-        body = ("The AI's repeated answers disagreed more than usual on this scan, so its outline may be unreliable. "
-                "A radiologist should check this case carefully before anything is concluded.") if simple else \
-               (f"Case uncertainty {pred.case_uncertainty:.4f} ≥ validated review threshold {thr['threshold']:.4f} "
-                f"(chosen on validation via Youden's J to detect WT Dice < {thr.get('tau_fail')}).")
+        if simple:
+            st.error("Needs specialist review. The model's repeated outputs disagreed more than usual on this scan, so the outline may be unreliable.")
+        else:
+            st.error(f"Needs review: case uncertainty {pred.case_uncertainty:.4f} >= validated threshold {thr['threshold']:.4f} "
+                     f"(set on validation data via Youden's J to detect WT Dice < {thr.get('tau_fail')}).")
     elif thr:
-        cls, head = "ns-ok", "✅ The AI is confident in this result"
-        body = ("Its repeated answers agreed closely. A doctor should still confirm it — this tool supports decisions, it does not make them.") if simple else \
-               (f"Case uncertainty {pred.case_uncertainty:.4f} < validated review threshold {thr['threshold']:.4f}. "
-                f"On the held-out test set, accepted cases averaged Dice {summary['review_flag']['dice_accepted']:.3f} (WT)." if summary else
-                f"Case uncertainty {pred.case_uncertainty:.4f} < review threshold {thr['threshold']:.4f}.")
+        if simple:
+            st.success("Confident result. The model's repeated outputs agreed closely. A specialist should still confirm it.")
+        else:
+            extra = f" On the test set, accepted cases averaged WT Dice {summary['review_flag']['dice_accepted']:.3f}." if summary else ""
+            st.success(f"Below review threshold: case uncertainty {pred.case_uncertainty:.4f} < {thr['threshold']:.4f}.{extra}")
     else:
-        cls, head, body = "ns-warn", "No validated threshold found", "Run scripts/evaluate.py to enable the review flag."
-    st.markdown(f'<div class="ns-banner {cls}"><h3>{head}</h3>{body}</div>', unsafe_allow_html=True)
+        st.warning("No validated threshold found. Run scripts/evaluate.py to enable the review flag.")
 
     # plain-language summary + key numbers
     left, right = st.columns([1.15, 1])
     with left:
         if simple:
-            st.markdown(f"""<div class="ns-card"><h4>In plain words</h4>
-            The AI found an abnormal region of about <b>{plain_size(v['WT_ml'])}</b>, which includes swelling around the tumour.
-            The solid tumour itself is about <b>{v['TC_ml']:.0f} mL</b>, and <b>{v['ET_ml']:.0f} mL</b> of that is
-            <i>active</i> tumour that lights up with contrast dye.<br><br>
-            <span class="ns-note">Volumes are estimates from the AI outline. 1 mL = 1 cm³, roughly a sugar cube.</span></div>""",
-                        unsafe_allow_html=True)
+            st.markdown(f"""**Summary**
+
+The model found an abnormal region of about **{plain_size(v['WT_ml'])}**, including swelling around the tumour.
+The solid tumour is about **{v['TC_ml']:.0f} mL**, of which **{v['ET_ml']:.0f} mL** is enhancing (active) tumour.
+
+Volumes are estimates from the model outline. 1 mL = 1 cm3.""")
         else:
-            st.markdown(f"""<div class="ns-card"><h4>Case summary</h4>
-            <b>Modalities:</b> {', '.join(m.upper() for m in present)}{' · <b>missing:</b> ' + ', '.join(m.upper() for m in missing) if missing else ''}<br>
-            <b>Input quality:</b> {quality.status} (score {quality.score:.2f})<br>
-            <b>MC samples:</b> {pred.mc_samples} · <b>inference:</b> {res['infer_s']:.1f} s on {DEVICE}<br>
-            <b>Case uncertainty:</b> {pred.case_uncertainty:.4f} (mean predictive entropy in tumour ROI)</div>""",
-                        unsafe_allow_html=True)
+            st.markdown(f"""**Case summary**
+
+- Modalities: {', '.join(m.upper() for m in present)}{'; missing: ' + ', '.join(m.upper() for m in missing) if missing else ''}
+- Input quality: {quality.status} (score {quality.score:.2f})
+- MC samples: {pred.mc_samples}; inference {res['infer_s']:.1f} s on {DEVICE}
+- Case uncertainty: {pred.case_uncertainty:.4f} (mean predictive entropy in tumour ROI)""")
     with right:
         k = st.columns(3)
         k[0].metric("Whole tumour" if simple else "WT", f"{v['WT_ml']:.1f} mL", help="Everything abnormal, including swelling")
         k[1].metric("Tumour core" if simple else "TC", f"{v['TC_ml']:.1f} mL", help="Solid tumour without the swelling")
-        k[2].metric("Active tumour" if simple else "ET", f"{v['ET_ml']:.1f} mL", help="Enhancing part — takes up contrast dye")
+        k[2].metric("Active tumour" if simple else "ET", f"{v['ET_ml']:.1f} mL", help="Enhancing part - takes up contrast dye")
         if metrics:
-            st.markdown(f'<div class="ns-banner ns-ok" style="padding:10px 14px;font-size:0.95rem;margin-top:8px">'
-                        f'Matches the expert outline: <b>{100*metrics["dice_WT"]:.0f}%</b> whole tumour · '
-                        f'<b>{100*metrics["dice_TC"]:.0f}%</b> core · <b>{100*metrics["dice_ET"]:.0f}%</b> active (Dice)</div>',
-                        unsafe_allow_html=True)
+            st.info(f"Agreement with expert outline (Dice): whole tumour {metrics['dice_WT']:.3f}, core {metrics['dice_TC']:.3f}, enhancing {metrics['dice_ET']:.3f}")
 
     if missing:
-        st.warning(f"Running without {', '.join(m.upper() for m in missing)}. The AI still works, but accuracy for the affected regions is lower (see the model card).")
+        st.warning(f"Running without {', '.join(m.upper() for m in missing)}. Accuracy for the affected regions is lower; see the subset table under validated performance.")
     if quality.status == "warn":
-        with st.expander(f"Scan quality: usable, with {len(quality.warnings())} note(s)"):
+        with st.expander(f"Scan quality: {len(quality.warnings())} warning(s)"):
             for w in quality.warnings():
                 st.write("- " + w)
 
     # viewer
-    st.markdown("#### Where is the tumour?")
+    st.markdown("#### Slice viewer")
     cA, cB = st.columns([1, 3])
     base_mod = cA.selectbox("Background scan", present, index=present.index("flair") if "flair" in present else 0,
-                            format_func=lambda m: MOD_HELP[m].split(" — ")[0])
+                            format_func=lambda m: MOD_HELP[m].split(" - ")[0])
     tum_z = np.where(pred.regions[0].reshape(pred.regions.shape[1], -1).sum(1) > 0)[0]
     default_z = int(tum_z[len(tum_z) // 2]) if tum_z.size else img.shape[1] // 2
-    z = cB.slider("Slice (drag to move up and down through the head)", 0, img.shape[1] - 1, default_z)
+    z = cB.slider("Axial slice", 0, img.shape[1] - 1, default_z)
     st.pyplot(overlay_figure(img[MODALITIES.index(base_mod)], pred.labels, pred.entropy, z, simple), clear_figure=True)
-    st.markdown('<div class="ns-legend ns-note">Colours: <span style="background:#DC2626"></span>dead / non-enhancing core '
-                '<span style="background:#28A65A"></span>swelling (edema) <span style="background:#FABE24"></span>active tumour &nbsp;·&nbsp; '
-                'Right panel: brighter = AI less sure (usually the tumour edge).</div>', unsafe_allow_html=True)
+    st.caption("Red: necrotic / non-enhancing core. Green: edema (swelling). Yellow: enhancing tumour. Right panel: brighter = less certain, usually at the tumour edge.")
 
     if show_3d and pred.regions[0].sum() > 0:
-        st.markdown("#### 3D view  <span class='ns-note'>drag to rotate · scroll to zoom</span>", unsafe_allow_html=True)
+        st.markdown("#### 3D view")
+        st.caption("Drag to rotate, scroll to zoom.")
         st.plotly_chart(plotly_3d(pred.regions), width="stretch")
 
     # downloads
-    st.markdown("#### Share the result")
+    st.markdown("#### Download")
     report = build_report(res, flagged, thr, model_info)
     md = report_markdown(report)
     d1, d2, d3 = st.columns(3)
-    d1.download_button("📄 Report (readable, .md)", md, file_name="neuroscope_report.md", width="stretch")
-    d2.download_button("🧾 Report (machine-readable, .json)", json.dumps(report, indent=2, default=float),
+    d1.download_button("Report (.md)", md, file_name="neuroscope_report.md", width="stretch")
+    d2.download_button("Report (.json)", json.dumps(report, indent=2, default=float),
                        file_name="neuroscope_report.json", width="stretch")
     lab_full = uncrop(pred.labels, res["meta"]).astype(np.uint8)
     lab_full[lab_full == 3] = 4
-    d3.download_button("🧠 Tumour outline (.nii, opens in any MRI viewer)", nib.Nifti1Image(lab_full, res["affine"]).to_bytes(),
+    d3.download_button("Segmentation mask (.nii)", nib.Nifti1Image(lab_full, res["affine"]).to_bytes(),
                        file_name="neuroscope_seg.nii", width="stretch")
-    with st.expander("Preview the report"):
+    with st.expander("Report preview"):
         st.markdown(md)
 
-    if st.button("↺ Start over"):
+    if st.button("Clear"):
         st.session_state.result = None
         st.rerun()
 
 # ---------------- Model card ----------------
 st.markdown("")
-with st.expander("📊 How well does it work? — validated performance & model card", expanded=False):
+with st.expander("Validated performance and model card", expanded=False):
     if summary:
         if simple:
             st.markdown(f"""
-**Tested on {summary.get('n_test')} patients the AI had never seen.** Its outlines overlapped expert outlines by
-**{100*summary['dice_WT']['mean']:.0f}%** (whole tumour), **{100*summary['dice_TC']['mean']:.0f}%** (core) and
-**{100*summary['dice_ET']['mean']:.0f}%** (active tumour). When its outline was poor, its own confidence score spotted that
-with **{100*summary['reliability']['failure_auroc']:.0f}%** reliability, which is what lets it ask for a human review at the right time.
+Tested on {summary.get('n_test')} patients held out from training. Overlap with expert outlines (Dice):
+whole tumour {summary['dice_WT']['mean']:.3f}, core {summary['dice_TC']['mean']:.3f}, enhancing {summary['dice_ET']['mean']:.3f}.
+The uncertainty score separated poor outlines from good ones with AUROC {summary['reliability']['failure_auroc']:.3f},
+which is what the review flag is based on.
             """)
         else:
             st.json({k: summary[k] for k in ["n_test", "n_val", "mc_samples", "dice_WT", "dice_TC", "dice_ET", "hd95_WT",
@@ -555,18 +505,18 @@ with **{100*summary['reliability']['failure_auroc']:.0f}%** reliability, which i
         sub_csv = os.path.join(results_dir, "subsets.csv")
         if os.path.exists(sub_csv):
             import pandas as pd
-            st.markdown("**Accuracy with missing scans** — every combination of the four MRI types (Dice on the test set):")
+            st.markdown("Dice on the test set for every combination of the four sequences:")
             df = pd.read_csv(sub_csv)[["subset", "n_modalities", "dice_WT", "dice_TC", "dice_ET", "uncertainty", "flag_rate"]].round(3)
             st.dataframe(df, width="stretch", hide_index=True)
         figs = [("fig_subsets.png", "Dice per modality subset"), ("fig_uncertainty_vs_dice.png", "Uncertainty vs Dice (per test patient)"),
-                ("fig_risk_coverage.png", "Risk–coverage curve")]
+                ("fig_risk_coverage.png", "Risk-coverage curve")]
         cols = st.columns(3)
         for col, (f, cap) in zip(cols, figs):
             p = os.path.join(results_dir, f)
             if os.path.exists(p):
                 col.image(p, caption=cap)
     else:
-        st.write("No results/summary.json found — run scripts/evaluate.py.")
+        st.write("No results/summary.json found - run scripts/evaluate.py.")
     st.markdown("""
 **Model.** 2D U-Net (7.8 M parameters), trained with *modality dropout* so it learns to work with any subset of the four MRI sequences.
 Confidence comes from Monte Carlo dropout: the network is run several times and the disagreement (predictive entropy) is measured.
@@ -576,5 +526,4 @@ The review threshold was fixed on the validation set and never tuned on the test
 tumour types, scanners, children, or post-operative scans. Uncertainty measures model disagreement, not correctness.
 This is a research prototype for human-in-the-loop review, **not a diagnostic device**.
     """)
-st.markdown('<p class="ns-foot">NeuroScope · built on public BraTS 2020 data · research & decision-support prototype, not a medical device.</p>',
-            unsafe_allow_html=True)
+st.caption("NeuroScope. Research prototype built on BraTS 2020. Not a medical device.")
