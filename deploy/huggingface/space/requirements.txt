@@ -1,0 +1,14 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+numpy
+scipy
+nibabel
+pandas
+matplotlib
+plotly
+streamlit==1.67.0
+pyyaml
+tqdm
+scikit-image
+pydicom
+SimpleITK

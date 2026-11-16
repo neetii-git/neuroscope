@@ -229,7 +229,7 @@ def run_case(vols, affine, mc: int, ckpt_path: str):
     img, seg, meta = preprocess_case(vols, available=present)
     t0 = time.time()
     voxel_mm3 = float(abs(np.linalg.det(affine[:3, :3]))) or 1.0
-    pred = predict_volume(model, img, mc_samples=mc, device=DEVICE, batch_size=32, voxel_volume_mm3=voxel_mm3)
+    pred = predict_volume(model, img, mc_samples=mc, device=DEVICE, batch_size=32 if DEVICE == "cuda" else 8, voxel_volume_mm3=voxel_mm3)
     infer_s = time.time() - t0
     metrics = region_metrics(pred.regions, labels_to_regions(seg), with_hd95=False) if seg is not None else None
     brain = (np.abs(img).sum(0) > 0)
