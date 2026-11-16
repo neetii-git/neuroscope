@@ -179,6 +179,105 @@ def analyse(res: Dict, thr: Optional[Dict], flagged: bool, sub_df, test_df, moda
     return out
 
 
+# ------------------------------------------------------------------ figures
+_COL = {1: (255, 51, 51), 2: (51, 204, 51), 3: (255, 217, 26)}
+
+
+def _png(rgb: np.ndarray, scale: int = 2) -> str:
+    import base64, io
+    from PIL import Image
+    im = Image.fromarray(rgb.astype(np.uint8))
+    im = im.resize((im.width * scale, im.height * scale), Image.LANCZOS)
+    buf = io.BytesIO(); im.save(buf, "PNG", optimize=True)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def _edge(m: np.ndarray) -> np.ndarray:
+    m = m > 0
+    return m & ~ndi.binary_erosion(m)
+
+
+def _orient(a: np.ndarray, plane: str) -> np.ndarray:
+    # axial slices (x, y) are shown like the app's slice viewer; coronal / sagittal with superior at the top
+    return np.swapaxes(a, 0, 1)[::-1] if plane == "axial" else a[::-1]
+
+
+def _panel(gray, lab, ent, mode, plane, gt=None, box=None):
+    if box is not None:
+        gray, lab, ent = gray[box], lab[box], ent[box]
+        gt = gt[box] if gt is not None else None
+    rgb = np.repeat(gray[..., None], 3, -1).astype(np.float32)
+    if mode == "fill":
+        for k, c in _COL.items():
+            m = lab == k
+            rgb[m] = rgb[m] * 0.45 + np.array(c) * 0.55
+    elif mode == "outline":
+        for k, c in _COL.items():
+            e = _edge(lab == k) if k != 2 else _edge(lab > 0)
+            rgb[ndi.binary_dilation(e) if rgb.shape[0] > 120 else e] = c
+    elif mode == "compare":
+        if gt is not None:
+            rgb[_edge(gt > 0)] = (0, 220, 255)
+        rgb[_edge(lab > 0)] = (255, 217, 26)
+    elif mode == "unc":
+        u = np.clip(ent / LOG2, 0, 1)[..., None]
+        rgb = rgb * 0.35 + (np.array([255, 245, 220]) * u + rgb * 0.65 * (1 - u)) * 0.65
+    return _orient(np.clip(rgb, 0, 255), plane)
+
+
+def build_figures(img: np.ndarray, labels: np.ndarray, entropy: np.ndarray, seg: Optional[np.ndarray], base_index: int,
+                  base_name: str, analysis: Dict) -> List[Dict]:
+    vol = img[base_index]
+    nz = vol[vol != 0]
+    lo, hi = (np.percentile(nz, [1, 99.5]) if nz.size else (0.0, 1.0))
+    gray = np.clip((vol - lo) / (hi - lo + 1e-6), 0, 1) * 255
+    wt = labels > 0
+    figs: List[Dict] = []
+    if not wt.any():
+        return figs
+    idx = np.argwhere(wt)
+    cz, cx, cy = (int(round(v)) for v in idx.mean(0))
+    # 1. orthogonal views through the tumour centre
+    views = [("axial", gray[cz], labels[cz], entropy[cz], None if seg is None else seg[cz], f"Axial, slice {cz}"),
+             ("coronal", gray[:, :, cy], labels[:, :, cy], entropy[:, :, cy], None if seg is None else seg[:, :, cy], f"Coronal, position {cy}"),
+             ("sagittal", gray[:, cx, :], labels[:, cx, :], entropy[:, cx, :], None if seg is None else seg[:, cx, :], f"Sagittal, position {cx}")]
+    figs.append({"cols": 3, "panels": [(_png(_panel(g, l, e, "fill", pl)), t) for pl, g, l, e, _, t in views],
+                 "caption": "Orthogonal views through the centre of the segmented tumour, with predicted labels overlaid."})
+    # crop box around tumour for close-ups
+    cc, n = ndi.label(wt)
+    main = np.argwhere(cc == (np.argmax(np.bincount(cc.ravel())[1:]) + 1)) if n > 1 else idx
+    cy_, cx_ = (main[:, 1].min() + main[:, 1].max()) / 2, (main[:, 2].min() + main[:, 2].max()) / 2
+    half = int(max(np.ptp(main[:, 1]), np.ptp(main[:, 2])) / 2 + 16)
+    half = max(28, min(half, min(wt.shape[1], wt.shape[2]) // 2))
+    y0 = int(np.clip(cy_ - half, 0, wt.shape[1] - 2 * half)); x0 = int(np.clip(cx_ - half, 0, wt.shape[2] - 2 * half))
+    box = (slice(y0, y0 + 2 * half), slice(x0, x0 + 2 * half))
+    zl = int((analysis.get("slices") or {}).get("largest", cz))
+    g, l, e = gray[zl], labels[zl], entropy[zl]
+    gt = seg[zl] if seg is not None else None
+    panels = [(_png(_panel(g, l, e, "scan", "axial", box=box), 3), base_name),
+              (_png(_panel(g, l, e, "fill", "axial", box=box), 3), "Predicted labels"),
+              (_png(_panel(g, l, e, "outline", "axial", box=box), 3), "Predicted outline")]
+    if gt is not None:
+        panels.append((_png(_panel(g, l, e, "compare", "axial", gt=gt, box=box), 3), "Reference (cyan) vs prediction (yellow)"))
+    panels.append((_png(_panel(g, l, e, "unc", "axial", box=box), 3), "Uncertainty"))
+    figs.append({"cols": len(panels), "panels": panels, "caption": f"Axial slice {zl}, largest tumour cross-section, magnified."})
+    # 3. outline montage across the tumour
+    z0, z1 = int(idx[:, 0].min()), int(idx[:, 0].max())
+    zs = sorted(set(int(round(v)) for v in np.linspace(z0 + (z1 - z0) * 0.06, z1 - (z1 - z0) * 0.06, 8)))
+    figs.append({"cols": 4, "panels": [(_png(_panel(gray[z], labels[z], entropy[z], "outline", "axial", box=box), 2), f"Slice {z}") for z in zs],
+                 "caption": f"Predicted outlines on {base_name} at {len(zs)} evenly spaced axial levels from slice {z0} to {z1}. "
+                            "Red: necrotic core. Yellow: enhancing. Green: outer tumour boundary including edema."})
+    # 4. most uncertain slice
+    mu = (analysis.get("slices") or {}).get("most_uncertain") or []
+    if mu and mu[0] != zl:
+        zu = int(mu[0]); g, l, e = gray[zu], labels[zu], entropy[zu]
+        figs.append({"cols": 3, "panels": [(_png(_panel(g, l, e, "scan", "axial", box=box), 3), base_name),
+                                           (_png(_panel(g, l, e, "outline", "axial", box=box), 3), "Predicted outline"),
+                                           (_png(_panel(g, l, e, "unc", "axial", box=box), 3), "Uncertainty")],
+                     "caption": f"Axial slice {zu}, highest mean uncertainty inside the tumour. Recommended for first review."})
+    return figs
+
+
 _CSS = """
 *{box-sizing:border-box} body{margin:0;background:#3a3c40;font-family:'Inter','Segoe UI',Arial,sans-serif;color:#111;font-size:13px}
 .page{max-width:860px;margin:18px auto;background:#fff;padding:40px 48px 34px;box-shadow:0 10px 40px -12px #000}
@@ -197,12 +296,12 @@ table{width:100%;border-collapse:collapse;margin:4px 0;font-size:12px}
 th{text-align:left;font-weight:600;font-size:11px;color:#333;border-bottom:1px solid #111;padding:5px 6px}
 td{padding:5px 6px;border-bottom:1px solid #e3e3e3;vertical-align:top} .n{text-align:right;font-variant-numeric:tabular-nums}
 .sev{font-weight:600;font-size:11px} .s0{color:#b00020} .s1{color:#8a6100} .s2{color:#555}
-.figs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px} .figs img{width:100%;display:block;background:#000}
+.figs{display:grid;gap:6px;margin-top:10px} .figs figure{margin:0} .figs img{width:100%;aspect-ratio:1/1;object-fit:contain;display:block;background:#000} .figs figcaption{font-size:10.5px;color:#444;margin-top:2px}
 .cap{font-size:11px;color:#444;margin:4px 0 0}
 .prof{display:flex;align-items:flex-end;gap:1px;height:56px;border-bottom:1px solid #111;margin-top:6px} .prof i{flex:1;background:#9a9a9a} .prof i.h{background:#111}
 .sign{display:grid;grid-template-columns:2fr 1.4fr 1fr;gap:24px;margin-top:30px} .sign div{border-top:1px solid #111;padding-top:4px;font-size:11px;color:#444}
 .ft{margin-top:22px;font-size:10.5px;color:#555;line-height:1.5;border-top:1px solid #ccc;padding-top:8px}
-@media print{body{background:#fff}.page{box-shadow:none;margin:0;max-width:none;padding:14mm 16mm}table,.figs,ol{break-inside:avoid}}
+@media print{body{background:#fff}.page{box-shadow:none;margin:0;max-width:none;padding:14mm 16mm}table,.figs,ol,.cap{break-inside:avoid}}
 """
 
 _SEV = {"critical": ("High", 0), "warn": ("Moderate", 1), "info": ("Note", 2)}
@@ -298,16 +397,16 @@ def report_html(a: Dict, res: Dict, flagged: bool, thr: Optional[Dict], model_in
 
     # figures
     figs, fno = "", 1
-    for key, cap in (("largest", "slice with the largest tumour area"), ("uncertain", "slice with the highest uncertainty")):
-        if images.get(key):
-            figs += ("<div class='figs'>" + "".join(f"<img src='data:image/png;base64,{images[key][n]}'>" for n in ("img", "pred", "unc"))
-                     + f"</div><p class='cap'>Fig. {fno}. Axial {cap}. Left to right: FLAIR, predicted labels (red necrotic core, yellow enhancing, green edema), uncertainty map.</p>")
-            fno += 1
+    for f in images.get("figs", []):
+        figs += (f"<div class='figs' style='grid-template-columns:repeat({f['cols']},1fr)'>"
+                 + "".join(f"<figure><img src='data:image/png;base64,{b}'><figcaption>{e(t)}</figcaption></figure>" for b, t in f["panels"])
+                 + f"</div><p class='cap'><b>Fig. {fno}.</b> {e(f['caption'])}</p>")
+        fno += 1
     sl = a.get("slices") or {}
     if sl.get("profile"):
         pr = np.array(sl["profile"]); mx = max(pr.max(), 1e-6); hot = set(sl.get("most_uncertain", []))
         figs += ("<div class='prof'>" + "".join(f"<i class='{'h' if i in hot else ''}' style='height:{100*v/mx:.0f}%'></i>" for i, v in enumerate(pr))
-                 + f"</div><p class='cap'>Fig. {fno}. Mean uncertainty inside the predicted tumour for each axial slice (inferior to superior). Dark bars: three highest.</p>")
+                 + f"</div><p class='cap'><b>Fig. {fno}.</b> Mean uncertainty inside the predicted tumour for each axial slice (inferior to superior). Dark bars: three highest.</p>")
 
     status = ("REVIEW REQUIRED", "Uncertainty above validated threshold") if flagged else ("WITHIN THRESHOLD", "Clinician confirmation required")
     return f"""<!doctype html><html><head><meta charset="utf-8"><title>{rid}</title>

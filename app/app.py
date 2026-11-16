@@ -31,7 +31,7 @@ from neuroscope.quality.iqa import assess_case  # noqa: E402
 import streamlit.components.v1 as components  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viz3d import brain_html
-from report import analyse, report_html  # noqa: E402
+from report import analyse, build_figures, report_html  # noqa: E402
 
 try:
     from skimage.measure import marching_cubes
@@ -504,36 +504,10 @@ def report_markdown(r: Dict) -> str:
 
 
 def report_images(res) -> Dict:
-    """Three-panel PNGs (scan, prediction, uncertainty) for the largest and the most uncertain tumour slice."""
-    import base64, io
-    from PIL import Image
-    img, pred = res["img"], res["pred"]
+    """Figures for the printable report: orthogonal views, magnified key slice, outline montage, most uncertain slice."""
     a = analyse_cache(res)
-    base_i = MODALITIES.index("flair") if "flair" in res["present"] else MODALITIES.index(res["present"][0])
-    out = {}
-
-    def png(arr):
-        buf = io.BytesIO(); Image.fromarray(arr).resize((arr.shape[1] * 2, arr.shape[0] * 2), Image.BILINEAR).save(buf, "PNG")
-        return base64.b64encode(buf.getvalue()).decode("ascii")
-
-    def trio(z):
-        b, l, e = img[base_i][z], pred.labels[z], pred.entropy[z]
-        ys, xs = np.nonzero(l > 0)
-        if ys.size:
-            cy, cx, r = int(ys.mean()), int(xs.mean()), 70
-            y0, x0 = max(0, cy - r), max(0, cx - r); y1, x1 = min(b.shape[0], cy + r), min(b.shape[1], cx + r)
-            sl = (slice(y0, y1), slice(x0, x1))
-        else:
-            sl = (slice(None), slice(None))
-        b, l, e = b[sl], l[sl], e[sl]
-        return {"img": png(compose_rgb(b, l, e, False, False, 0, 0)), "pred": png(compose_rgb(b, l, e, True, False, 0.55, 0)),
-                "unc": png(compose_rgb(b, l, e, False, True, 0, 0.95))}
-    s = a.get("slices") or {}
-    if s.get("largest") is not None:
-        out["largest"] = trio(s["largest"])
-    if s.get("most_uncertain"):
-        out["uncertain"] = trio(s["most_uncertain"][0])
-    return out
+    bi = MODALITIES.index("flair") if "flair" in res["present"] else MODALITIES.index(res["present"][0])
+    return {"figs": build_figures(res["img"], res["pred"].labels, res["pred"].entropy, res.get("seg"), bi, MODALITIES[bi].upper(), a)}
 
 
 def analyse_cache(res):
