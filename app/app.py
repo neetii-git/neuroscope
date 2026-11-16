@@ -250,8 +250,8 @@ def fig_rano(res, meas, mod_index: int):
     W = img.shape[3]
     fig = go.Figure(go.Image(z=rgb, hoverinfo="skip"))
     tr = lambda p: (p[0], W - 1 - p[1])
-    for (a, b, col, name, d) in ((meas["p1"], meas["p2"], ACCENT, "Longest diameter", meas["d1_mm"]),
-                                 (meas["q1"], meas["q2"], "#FFFFFF", "Perpendicular", meas["d2_mm"])):
+    for (a, b, col, name, d) in ((meas["p1"], meas["p2"], "#FFFFFF", "Longest diameter", meas["d1_mm"]),
+                                 (meas["q1"], meas["q2"], "#00DCFF", "Perpendicular", meas["d2_mm"])):
         (x0, y0), (x1, y1) = tr(a), tr(b)
         fig.add_trace(go.Scatter(x=[x0, x1], y=[y0, y1], mode="lines+markers", line=dict(color=col, width=3), marker=dict(size=7, color=col),
                                  name=f"{name} {d:.1f} mm", hovertemplate=f"{name}: {d:.1f} mm<extra></extra>"))
@@ -970,7 +970,7 @@ else:
 
     with tab_meas:
         meas = bidimensional(pred.labels, res["affine"], "ET") or bidimensional(pred.labels, res["affine"], "TC")
-        m1, m2 = st.columns([1.5, 1])
+        m1, m2 = st.columns([1.35, 1])
         bi = MODALITIES.index("flair") if "flair" in present else MODALITIES.index(present[0])
         with m1:
             if meas:
@@ -982,9 +982,9 @@ else:
             if meas:
                 tgt = "enhancing tumour" if meas["target"] == "ET" else "tumour core (no enhancing tumour found)"
                 mc1, mc2 = st.columns(2)
-                mc1.metric("Longest diameter", f"{meas['d1_mm']:.1f} mm")
-                mc2.metric("Perpendicular", f"{meas['d2_mm']:.1f} mm")
-                mc1.metric("Product", f"{meas['product_mm2']:.0f} mm²")
+                mc1.metric("Longest (mm)", f"{meas['d1_mm']:.1f}", help="White line")
+                mc2.metric("Perpendicular (mm)", f"{meas['d2_mm']:.1f}", help="Cyan line")
+                mc1.metric("Product (mm²)", f"{meas['product_mm2']:.0f}")
                 mc2.metric("Measurable", "Yes" if meas["measurable"] else "No", help="RANO: both diameters at least 10 mm")
                 st.caption(f"Measured automatically on the {tgt}, axial slice {meas['slice']}: the slice where the longest diameter times the longest "
                            "perpendicular diameter is largest. This is the measurement radiologists use in the RANO response criteria, which normally "

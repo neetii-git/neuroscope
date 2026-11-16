@@ -1,0 +1,32 @@
+{
+  "seed": 42,
+  "model": {
+    "base_channels": 32,
+    "dropout": 0.2
+  },
+  "data": {
+    "modality_dropout_p": 0.5,
+    "neg_slice_frac": 0.3,
+    "num_workers": 2
+  },
+  "train": {
+    "epochs": 20,
+    "batch_size": 24,
+    "lr": 0.0003,
+    "weight_decay": 0.0001,
+    "amp": true,
+    "max_slices_per_epoch": 12000,
+    "val_every": 1,
+    "val_max_cases": 30
+  },
+  "eval": {
+    "mc_samples": 8,
+    "mc_samples_subsets": 4,
+    "failure_dice_threshold": 0.75
+  },
+  "split": {
+    "train": 258,
+    "val": 37,
+    "test": 74
+  }
+}

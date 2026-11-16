@@ -165,7 +165,7 @@ def analyse(res: Dict, thr: Optional[Dict], flagged: bool, sub_df, test_df, moda
         both = []
         for i in range(lab.shape[0]):
             a, b = wt[i], gt[i]
-            if a.sum() + b.sum() >= 40:
+            if b.sum() >= 200:
                 both.append((i, _dice(a, b)))
         fn = float((gt & ~wt).sum() * vox_ml)
         fp = float((wt & ~gt).sum() * vox_ml)
@@ -249,7 +249,7 @@ def rano_panel(img2d_gray: np.ndarray, labels2d: np.ndarray, meas: Dict, box=Non
     im = Image.fromarray(rgb.astype(np.uint8)).resize((rgb.shape[1] * scale, rgb.shape[0] * scale), Image.LANCZOS)
     dr = ImageDraw.Draw(im)
     tr = lambda p: (p[0] * scale + scale / 2, (W - 1 - p[1]) * scale + scale / 2)
-    for a, b, col in ((meas["p1"], meas["p2"], (245, 197, 24)), (meas["q1"], meas["q2"], (255, 255, 255))):
+    for a, b, col in ((meas["p1"], meas["p2"], (255, 255, 255)), (meas["q1"], meas["q2"], (0, 220, 255))):
         dr.line([tr(a), tr(b)], fill=col, width=max(2, scale))
         for p in (a, b):
             x, y = tr(p); dr.ellipse([x - 4, y - 4, x + 4, y + 4], fill=col)
@@ -294,7 +294,7 @@ def build_figures(img: np.ndarray, labels: np.ndarray, entropy: np.ndarray, seg:
         figs.append({"cols": 2, "panels": [(rano_panel(gray[z], labels[z], r), f"Axial slice {z}"),
                                            (_png(_panel(gray[z], labels[z], entropy[z], "fill", "axial"), 2), "Whole slice, predicted labels")],
                      "caption": f"Bidimensional measurement of the {'enhancing tumour' if r['target'] == 'ET' else 'tumour core'}: longest diameter "
-                                f"{r['d1_mm']:.1f} mm (yellow) and longest perpendicular diameter {r['d2_mm']:.1f} mm (white)."})
+                                f"{r['d1_mm']:.1f} mm (white) and longest perpendicular diameter {r['d2_mm']:.1f} mm (cyan)."})
     # crop box around tumour for close-ups
     cc, n = ndi.label(wt)
     main = np.argwhere(cc == (np.argmax(np.bincount(cc.ravel())[1:]) + 1)) if n > 1 else idx
@@ -488,7 +488,7 @@ def report_html(a: Dict, res: Dict, flagged: bool, thr: Optional[Dict], model_in
         if followup.get("panels"):
             fu += ("<div class='figs' style='grid-template-columns:1fr 1fr'>" + "".join(
                 f"<figure><img src='data:image/png;base64,{b}'><figcaption>{e(t)}</figcaption></figure>" for b, t in followup["panels"]) + "</div>"
-                "<p class='cap'>Bidimensional measurement on each examination (yellow: longest diameter, white: perpendicular).</p>")
+                "<p class='cap'>Bidimensional measurement on each examination (white: longest diameter, cyan: perpendicular).</p>")
     # patient page
     dia = (6 * a["wt_ml"] / np.pi) ** (1 / 3) if a["wt_ml"] > 0 else 0
     side_txt = {"right hemisphere": "the right side of the brain", "left hemisphere": "the left side of the brain",

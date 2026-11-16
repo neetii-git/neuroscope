@@ -17,30 +17,8 @@ In the Space, open **Files** > **+ Add file** > **Create a new file**:
 1. File name `Dockerfile`, paste the contents of `deploy/huggingface/Dockerfile` from GitHub, **Commit**.
 2. Open the existing `README.md` > **Edit**, replace everything with `deploy/huggingface/README.md`, **Commit**.
 
-## 4. Upload the model and the example patient
-On your laptop, make this folder (copy, do not move):
-
-```
-data\
-  runs\base\best.pt
-  runs\base\history.csv
-  runs\base\results\        (the whole folder)
-  demo_case\                (the example patient's .nii.gz files)
-```
-
-PowerShell, from the project folder:
-
-```
-cd "C:\Users\Neeti Soni\neuroscope"
-mkdir data\runs\base
-copy runs\base\best.pt data\runs\base\
-copy runs\base\history.csv data\runs\base\
-xcopy runs\base\results data\runs\base\results\ /E /I
-xcopy demo_case data\demo_case\ /E /I
-```
-
-Then in the Space: **Files** > **+ Add file** > **Upload files**, drag the whole `data` folder in, **Commit**.
-Do not upload `last.pt` or the training cache; they are not needed.
+## 4. Model and example patient
+Nothing to upload: they are in this repository under `hosting/data` and the Space downloads them when it builds.
 
 ## 5. Wait for the build
 The Space builds automatically (**Logs** tab shows progress), about 5 to 10 minutes. When it says **Running**, open
