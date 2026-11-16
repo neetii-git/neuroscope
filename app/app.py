@@ -94,7 +94,8 @@ html, body {background: #0E0F11;}
 header[data-testid="stHeader"], [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stMainBlockContainer"], [data-testid="stBottom"] > div {background: transparent !important;}
 #ns-bg {z-index: 1 !important;}
 .stApp > header {z-index: 3;}
-.block-container, section[data-testid="stSidebar"] {position: relative; z-index: 2;}
+.block-container {position: relative; z-index: 2;}
+section[data-testid="stSidebar"] {z-index: 1000 !important;}
 [data-testid="stAppViewContainer"] {position: relative; z-index: 2;}
 @keyframes rise {from {opacity: 0; transform: perspective(900px) translateY(28px) rotateX(8deg);} to {opacity: 1; transform: none;}}
 .block-container {padding-top: 1.2rem; max-width: 1280px;}
