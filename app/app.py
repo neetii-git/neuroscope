@@ -365,6 +365,20 @@ def fig_subsets(sub: pd.DataFrame):
     return dark(fig, 560)
 
 
+ABLATION = load_json(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ablation.json"))
+
+
+def fig_ablation(abl: Dict) -> go.Figure:
+    ns = ["1", "2", "3", "4"]
+    w, wo = abl["with_modality_dropout_by_n_sequences"], abl["no_modality_dropout_by_n_sequences"]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=[f"{n} sequence" + ("s" if n != "1" else "") for n in ns], y=[w[n]["WT"] for n in ns], name="With modality dropout", marker_color=GREEN))
+    fig.add_trace(go.Bar(x=[f"{n} sequence" + ("s" if n != "1" else "") for n in ns], y=[wo[n]["WT"] for n in ns], name="Without modality dropout", marker_color=ACCENT))
+    fig.update_layout(title=dict(text="Whole-tumour Dice by number of sequences available (mean over subsets)", x=0.02, font=dict(size=14)),
+                      barmode="group", yaxis=dict(range=[0, 1], title="Dice"), legend=dict(orientation="h", y=1.1))
+    return dark(fig, 360)
+
+
 def fig_history(hist: pd.DataFrame):
     fig = go.Figure()
     for c, nm, col in [("val_dice_WT", "val WT", REGION_HEX[0]), ("val_dice_TC", "val TC", REGION_HEX[1]), ("val_dice_ET", "val ET", REGION_HEX[2])]:
@@ -765,6 +779,28 @@ else:
                                                  "specificity_WT", "reliability", "review_flag"] if k in summary}, expanded=False)
             if sub_df is not None:
                 st.plotly_chart(fig_subsets(sub_df), width="stretch", key="subsets_perf")
+        if ABLATION and summary:
+            st.markdown("#### Ablations")
+            st.caption("Two controlled comparisons on the same 74 test patients, run to check that each design choice earns its place.")
+            a1, a2 = st.columns(2)
+            a1.plotly_chart(fig_ablation(ABLATION), width="stretch", key="ablation_moddrop")
+            nm, mc1 = ABLATION["no_modality_dropout"]["test"], ABLATION["mc1_baseline"]["test"]
+            rel = summary.get("reliability", {})
+            tbl = pd.DataFrame([
+                {"Setting": "Full model (modality dropout, MC=8)", "Dice WT": summary["dice_WT"]["mean"], "Dice TC": summary["dice_TC"]["mean"], "Dice ET": summary["dice_ET"]["mean"], "Failure AUROC": rel.get("failure_auroc")},
+                {"Setting": "No modality dropout (MC=8)", "Dice WT": nm["WT"], "Dice TC": nm["TC"], "Dice ET": nm["ET"], "Failure AUROC": nm["failure_auroc"]},
+                {"Setting": "Single pass, no MC sampling (MC=1)", "Dice WT": mc1["WT"], "Dice TC": mc1["TC"], "Dice ET": mc1["ET"], "Failure AUROC": mc1["failure_auroc"]},
+            ]).set_index("Setting").round(3)
+            a2.dataframe(tbl, width="stretch")
+            a2.caption("Failure AUROC: how well the uncertainty score separates poor outlines (WT Dice below 0.75) from good ones.")
+            auc8 = rel.get("failure_auroc")
+            auc_txt = f"{auc8:.3f} with eight samples" if isinstance(auc8, (int, float)) and auc8 == auc8 else "see the table for eight samples"
+            st.markdown(
+                "**Reading the ablations.** With all four sequences the two models score the same, so modality dropout costs nothing at full input. "
+                "Its value shows when sequences are missing: with one sequence the dropout-trained model reaches whole-tumour Dice "
+                f"{ABLATION['with_modality_dropout_by_n_sequences']['1']['WT']:.2f} against {ABLATION['no_modality_dropout_by_n_sequences']['1']['WT']:.2f} without it, "
+                f"and with two sequences {ABLATION['with_modality_dropout_by_n_sequences']['2']['WT']:.2f} against {ABLATION['no_modality_dropout_by_n_sequences']['2']['WT']:.2f}. "
+                f"Monte Carlo sampling is what powers the review flag: failure AUROC is {mc1['failure_auroc']:.3f} with a single pass and {auc_txt}.")
             cols = st.columns(2)
             if hist_df is not None:
                 cols[0].plotly_chart(fig_history(hist_df), width="stretch")

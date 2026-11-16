@@ -1,0 +1,146 @@
+{
+ "note": "Ablation run on Kaggle (T4 x2), same split, seed and 20 epochs as the base model. Test set, 74 patients, MC=8 unless stated.",
+ "no_modality_dropout": {
+  "val_best_mean_dice": 0.772,
+  "test": {
+   "WT": 0.9,
+   "TC": 0.855,
+   "ET": 0.771,
+   "failure_auroc": 0.981,
+   "flag_rate": 0.08
+  },
+  "threshold": 0.1455,
+  "subsets": {
+   "t1": {
+    "WT": 0.002,
+    "TC": 0.003,
+    "ET": 0.054
+   },
+   "t1ce": {
+    "WT": 0.222,
+    "TC": 0.455,
+    "ET": 0.461
+   },
+   "t1+t1ce": {
+    "WT": 0.344,
+    "TC": 0.662,
+    "ET": 0.681
+   },
+   "t2": {
+    "WT": 0.225,
+    "TC": 0.138,
+    "ET": 0.054
+   },
+   "t1+t2": {
+    "WT": 0.238,
+    "TC": 0.12,
+    "ET": 0.054
+   },
+   "t1ce+t2": {
+    "WT": 0.548,
+    "TC": 0.686,
+    "ET": 0.648
+   },
+   "t1+t1ce+t2": {
+    "WT": 0.556,
+    "TC": 0.72,
+    "ET": 0.671
+   },
+   "flair": {
+    "WT": 0.814,
+    "TC": 0.109,
+    "ET": 0.054
+   },
+   "t1+flair": {
+    "WT": 0.82,
+    "TC": 0.203,
+    "ET": 0.054
+   },
+   "t1ce+flair": {
+    "WT": 0.808,
+    "TC": 0.761,
+    "ET": 0.723
+   },
+   "t1+t1ce+flair": {
+    "WT": 0.869,
+    "TC": 0.83,
+    "ET": 0.765
+   },
+   "t2+flair": {
+    "WT": 0.861,
+    "TC": 0.146,
+    "ET": 0.054
+   },
+   "t1+t2+flair": {
+    "WT": 0.875,
+    "TC": 0.182,
+    "ET": 0.054
+   },
+   "t1ce+t2+flair": {
+    "WT": 0.888,
+    "TC": 0.828,
+    "ET": 0.756
+   },
+   "t1+t1ce+t2+flair": {
+    "WT": 0.9,
+    "TC": 0.854,
+    "ET": 0.77
+   }
+  }
+ },
+ "with_modality_dropout_by_n_sequences": {
+  "1": {
+   "WT": 0.727,
+   "TC": 0.578,
+   "ET": 0.324
+  },
+  "2": {
+   "WT": 0.83,
+   "TC": 0.722,
+   "ET": 0.52
+  },
+  "3": {
+   "WT": 0.872,
+   "TC": 0.798,
+   "ET": 0.655
+  },
+  "4": {
+   "WT": 0.899,
+   "TC": 0.86,
+   "ET": 0.774
+  }
+ },
+ "no_modality_dropout_by_n_sequences": {
+  "1": {
+   "WT": 0.316,
+   "TC": 0.176,
+   "ET": 0.156
+  },
+  "2": {
+   "WT": 0.603,
+   "TC": 0.43,
+   "ET": 0.369
+  },
+  "3": {
+   "WT": 0.797,
+   "TC": 0.64,
+   "ET": 0.562
+  },
+  "4": {
+   "WT": 0.9,
+   "TC": 0.854,
+   "ET": 0.77
+  }
+ },
+ "mc1_baseline": {
+  "test": {
+   "WT": 0.899,
+   "TC": 0.861,
+   "ET": 0.775,
+   "failure_auroc": 0.944,
+   "flag_rate": 0.07
+  },
+  "threshold": 0.1434,
+  "note": "Same trained base model, one deterministic pass (no Monte Carlo sampling)."
+ }
+}

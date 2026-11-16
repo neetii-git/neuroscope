@@ -126,6 +126,24 @@ In Detailed view the example patient can be re-run with chosen sequences removed
 The landing page shows the validated test-set numbers, read live from `runs/base/results/summary.json`.
 Example-patient results are cached after the first run.
 
+## Ablations
+
+Both run on the same split and seed, 74 test patients (full per-subset tables are in `app/ablation.json` and the Performance tab).
+
+**Modality dropout.** A second model trained identically but without modality dropout matches the full model with all four sequences
+(whole-tumour Dice 0.900 vs 0.899) and collapses when sequences are missing:
+
+| Sequences available | WT Dice with dropout | WT Dice without | ET Dice with | ET Dice without |
+|---|---|---|---|---|
+| 1 | 0.727 | 0.316 | 0.324 | 0.156 |
+| 2 | 0.830 | 0.603 | 0.520 | 0.369 |
+| 3 | 0.872 | 0.797 | 0.655 | 0.562 |
+| 4 | 0.899 | 0.900 | 0.774 | 0.770 |
+
+**Monte Carlo sampling.** The same trained model evaluated with one deterministic pass (MC=1) gives the same overlap accuracy
+(WT 0.899, TC 0.861, ET 0.775) but a weaker failure detector: AUROC 0.944 with one pass, compared with the eight-sample value in the Performance tab.
+Reproduce with `notebooks/kaggle_ablation.ipynb`.
+
 ## Design decisions (short)
 
 - **2D not 3D.** A 3D U-Net at BraTS resolution needs a day of 16 GB-GPU time per model; the goal here is the
