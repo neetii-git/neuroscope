@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://neetii-git.github.io/neuroscope/sitemap.xml

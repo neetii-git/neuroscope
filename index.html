@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NeuroScope: brain tumour segmentation from MRI with uncertainty | Neeti Soni</title>
+<meta name="description" content="NeuroScope segments brain tumours on MRI, measures them, and flags results it is unsure about. Works with missing sequences and hospital DICOM scans. Live demo and source code. By Neeti Soni, SRMIST.">
+<meta name="author" content="Neeti Soni">
+<meta name="keywords" content="NeuroScope, brain tumour segmentation, brain tumor segmentation, MRI, BraTS, U-Net, uncertainty, Monte Carlo dropout, RANO, DICOM, medical imaging, deep learning, Neeti Soni, SRMIST">
+<link rel="canonical" href="https://neetii-git.github.io/neuroscope/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="NeuroScope: brain tumour segmentation that knows when it is wrong">
+<meta property="og:description" content="Segments and measures brain tumours on MRI, flags uncertain results for review, works with missing sequences and hospital scans.">
+<meta property="og:url" content="https://neetii-git.github.io/neuroscope/">
+<meta property="og:image" content="https://neetii-git.github.io/neuroscope/img/axial.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"NeuroScope","applicationCategory":"HealthApplication","operatingSystem":"Web",
+ "url":"https://neuroscopeapp.streamlit.app","codeRepository":"https://github.com/neetii-git/neuroscope",
+ "description":"Brain tumour segmentation from MRI with case-level uncertainty, missing-sequence robustness, RANO-style measurement and hospital DICOM import. Research prototype.",
+ "author":{"@type":"Person","name":"Neeti Soni","affiliation":"SRM Institute of Science and Technology"},
+ "offers":{"@type":"Offer","price":"0","priceCurrency":"INR"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0E0F11;--panel:#16171A;--line:#2A2C31;--text:#ECECEA;--muted:#A3A5AA;--y:#F5C518}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 'Inter','Segoe UI',system-ui,sans-serif}
+a{color:var(--y);text-decoration:none} a:hover{text-decoration:underline}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+nav{position:sticky;top:0;z-index:5;background:#0E0F11e6;border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
+.logo{font:700 20px 'Space Grotesk',sans-serif;letter-spacing:-.02em;color:var(--text)}
+nav .links a{color:var(--muted);margin-left:22px;font-size:14px} nav .links a:hover{color:var(--text);text-decoration:none}
+h1,h2,h3{font-family:'Space Grotesk','Inter',sans-serif;letter-spacing:-.02em;line-height:1.15;margin:0}
+h1{font-size:clamp(34px,5vw,56px)} h2{font-size:clamp(26px,3vw,34px);margin-bottom:14px} h3{font-size:18px;margin-bottom:6px}
+.hero{display:grid;grid-template-columns:1fr 1.15fr;gap:32px;align-items:center;padding:56px 0 30px}
+.lead{color:var(--muted);font-size:18px;margin:18px 0 26px;max-width:520px}
+.btns{display:flex;gap:12px;flex-wrap:wrap}
+.btn{display:inline-block;padding:12px 20px;border-radius:12px;font-weight:600;border:1px solid var(--line);color:var(--text)}
+.btn.p{background:var(--y);color:#0E0F11;border-color:var(--y)} .btn:hover{text-decoration:none;transform:translateY(-1px)}
+.viewer{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#0B0C0E;height:560px}
+.viewer iframe{width:100%;height:100%;border:0;display:block}
+.note{color:var(--muted);font-size:13px;margin-top:8px}
+section{padding:56px 0;border-top:1px solid var(--line)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:22px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+.stat b{display:block;font:600 30px 'Space Grotesk',sans-serif;color:var(--y)} .stat span{color:var(--muted);font-size:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+.card p{margin:0;color:var(--muted);font-size:15px}
+figure{margin:0} figure img{width:100%;display:block;border-radius:10px;background:#5C5C5C;aspect-ratio:1/1;object-fit:contain}
+figcaption{color:var(--muted);font-size:13px;margin-top:6px}
+.wide img{aspect-ratio:auto;background:#fff}
+table{width:100%;border-collapse:collapse;font-size:15px;margin-top:10px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)} th{color:var(--muted);font-weight:500} td.n{font-variant-numeric:tabular-nums}
+ol.steps{counter-reset:s;list-style:none;padding:0;margin:18px 0 0;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+ol.steps li{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;counter-increment:s}
+ol.steps li:before{content:counter(s);display:inline-block;width:26px;height:26px;border-radius:50%;background:var(--y);color:#0E0F11;font-weight:700;text-align:center;line-height:26px;margin-bottom:8px}
+ol.steps p{margin:0;color:var(--muted);font-size:14px}
+footer{border-top:1px solid var(--line);padding:30px 0 50px;color:var(--muted);font-size:13px}
+@media (max-width:860px){.hero,.grid2{grid-template-columns:1fr}.stats,.grid3,ol.steps{grid-template-columns:1fr 1fr}.viewer{height:420px}}
+@media (max-width:520px){.stats,.grid3,ol.steps{grid-template-columns:1fr}nav .links a:not(.keep){display:none}}
+</style>
+</head>
+<body>
+<nav><div class="wrap"><a class="logo" href="#">NeuroScope</a>
+<div class="links"><a href="#different">What is different</a><a href="#results">Results</a><a href="#how">How it works</a><a class="keep" href="https://github.com/neetii-git/neuroscope">Source code</a></div></div></nav>
+
+<header class="wrap hero">
+  <div>
+    <h1>Brain tumour segmentation that tells you when not to trust it.</h1>
+    <p class="lead">NeuroScope outlines and measures brain tumours on MRI, then checks its own answer. Uncertain cases are flagged for a specialist. It keeps working when scan sequences are missing, and it reads the scans hospitals give patients.</p>
+    <div class="btns">
+      <a class="btn p" href="https://neuroscopeapp.streamlit.app">Open the live app</a>
+      <a class="btn" href="https://github.com/neetii-git/neuroscope">Source code</a>
+    </div>
+    <p class="note">If the app has been idle, it takes about a minute to wake up. Research prototype, not a medical device.</p>
+  </div>
+  <div>
+    <div class="viewer"><iframe src="brain3d.html" title="Interactive 3D view of a brain MRI with the model's tumour segmentation" loading="lazy"></iframe></div>
+    <p class="note">The model's segmentation of a test patient, rendered in your browser. Drag to rotate, scroll to zoom. Red: necrotic core. Yellow: enhancing tumour. Green: edema.</p>
+  </div>
+</header>
+
+<section id="results"><div class="wrap">
+  <h2>Measured on 74 patients the model never saw</h2>
+  <p style="color:var(--muted);max-width:760px">BraTS 2020, split by patient into training, validation and test sets. The review threshold was fixed on validation data before the test set was touched.</p>
+  <div class="stats">
+    <div class="stat"><b>0.90</b><span>Dice, whole tumour (95% CI 0.88 to 0.91)</span></div>
+    <div class="stat"><b>0.86 / 0.77</b><span>Dice, tumour core / enhancing tumour</span></div>
+    <div class="stat"><b>0.95</b><span>AUROC for catching poor outlines from the uncertainty score</span></div>
+    <div class="stat"><b>15 of 15</b><span>combinations of the four MRI sequences supported</span></div>
+  </div>
+  <div class="grid3" style="margin-top:22px">
+    <figure><img src="img/axial.png" alt="Axial MRI slice with predicted tumour regions overlaid"><figcaption>Axial view, predicted regions</figcaption></figure>
+    <figure><img src="img/coronal.png" alt="Coronal MRI slice with predicted tumour regions"><figcaption>Coronal view</figcaption></figure>
+    <figure><img src="img/sagittal.png" alt="Sagittal MRI slice with predicted tumour regions"><figcaption>Sagittal view</figcaption></figure>
+  </div>
+</div></section>
+
+<section id="different"><div class="wrap">
+  <h2>What is different from a typical segmentation model</h2>
+  <div class="grid2" style="margin-top:18px">
+    <div class="card"><h3>It flags its own doubtful results</h3><p>The network runs several times with dropout active. Where the runs disagree, the result is uncertain. Each case gets an uncertainty score compared against a validated threshold, so a poor outline is sent for review instead of being presented as fact.</p></div>
+    <div class="card"><h3>It works with missing sequences</h3><p>Trained with modality dropout and tested on all 15 sequence combinations. With a single sequence it keeps a whole-tumour Dice of 0.73; the same network trained without modality dropout falls to 0.32.</p></div>
+    <div class="card"><h3>It reads hospital scans</h3><p>Upload the zipped DICOM folder from an MRI CD. NeuroScope finds the FLAIR, T1, T1 with contrast and T2 series, aligns them, removes the skull and runs the analysis. Names and IDs are never read into the results.</p></div>
+    <div class="card"><h3>It measures like a radiologist</h3><p>The longest diameter of the enhancing tumour and the longest perpendicular diameter, the measurement used in the RANO response criteria, are computed automatically and drawn on the slice. A follow-up scan can be compared against an earlier one.</p></div>
+  </div>
+  <div class="grid3" style="margin-top:18px">
+    <figure><img src="img/measure.png" alt="Bidimensional tumour measurement drawn on an MRI slice"><figcaption>Automatic bidimensional measurement: 54.3 x 45.8 mm</figcaption></figure>
+    <figure><img src="img/uncertainty.png" alt="Uncertainty map highlighting the tumour border"><figcaption>Uncertainty map: brighter where repeated runs disagree, mostly on the border</figcaption></figure>
+    <figure><img src="img/compare.png" alt="Expert outline in cyan compared with the model outline in yellow"><figcaption>Expert outline (cyan) against the model (yellow)</figcaption></figure>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Evidence</h2>
+  <div class="grid2">
+    <figure class="wide"><img src="img/fig_subsets.png" alt="Dice score for each combination of available MRI sequences"><figcaption>Accuracy for every combination of available sequences.</figcaption></figure>
+    <figure class="wide"><img src="img/fig_risk_coverage.png" alt="Risk coverage curve for the uncertainty-based review flag"><figcaption>Risk-coverage: sending the most uncertain cases for review lowers the error on the cases that remain.</figcaption></figure>
+  </div>
+  <table>
+    <tr><th>Ablation (74 test patients)</th><th>Whole tumour Dice, 1 sequence</th><th>2 sequences</th><th>All 4</th></tr>
+    <tr><td>With modality dropout</td><td class="n">0.73</td><td class="n">0.83</td><td class="n">0.90</td></tr>
+    <tr><td>Without modality dropout</td><td class="n">0.32</td><td class="n">0.60</td><td class="n">0.90</td></tr>
+  </table>
+</div></section>
+
+<section id="how"><div class="wrap">
+  <h2>How it works</h2>
+  <ol class="steps">
+    <li><h3>Scans in</h3><p>Research NIfTI files or a hospital DICOM folder. Any subset of FLAIR, T1, T1 with contrast and T2.</p></li>
+    <li><h3>Quality checks</h3><p>Missing sequences, brain coverage, noise, saturation and empty slices are checked before analysis.</p></li>
+    <li><h3>Segmentation</h3><p>A 2D U-Net (7.8 M parameters) trained on BraTS 2020 labels the necrotic core, enhancing tumour and edema on every slice.</p></li>
+    <li><h3>Uncertainty</h3><p>Monte Carlo dropout gives a per-voxel uncertainty map and a case score compared with the validated threshold.</p></li>
+    <li><h3>Measurement and review</h3><p>Volumes, bidimensional measurement, separate regions a reviewer can reject, and follow-up comparison.</p></li>
+    <li><h3>Report</h3><p>A printable report with findings, quality-control flags, key slices, and a plain-language page for the patient.</p></li>
+  </ol>
+</div></section>
+
+<footer><div class="wrap">
+  <p><b style="color:var(--text)">NeuroScope</b> by Neeti Soni, B.Tech CSE (Data Science), SRM Institute of Science and Technology, Kattankulathur.
+  <a href="https://neuroscopeapp.streamlit.app">Live app</a> · <a href="https://github.com/neetii-git/neuroscope">Source code</a></p>
+  <p>Research and education tool. Not a medical device and not for diagnosis or treatment decisions. Trained on adult glioma MRI; not validated on other tumour types, scanners or populations.</p>
+  <p>Data: Brain Tumor Segmentation Challenge (BraTS) 2020. Menze et al., IEEE TMI 2015; Bakas et al., Scientific Data 2017; Bakas et al., arXiv:1811.02629.</p>
+</div></footer>
+</body>
+</html>
