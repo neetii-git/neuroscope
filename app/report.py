@@ -182,6 +182,11 @@ def analyse(res: Dict, thr: Optional[Dict], flagged: bool, sub_df, test_df, moda
     if r and not r["measurable"]:
         add("info", "Enhancing disease below measurable size", f"Bidimensional measurement {r['d1_mm']:.0f} x {r['d2_mm']:.0f} mm; RANO requires at least 10 mm in both "
             "dimensions for measurable disease.", f"Slice {r['slice']}")
+    if res.get("import_log"):
+        approx = any("approximate" in l for l in res["import_log"])
+        add("warn" if approx else "info", "Imported from a hospital DICOM study",
+            " ".join(res["import_log"]) + " The model was trained on BraTS research scans; accuracy on routine hospital scans has not been validated."
+            + (" Approximate skull removal can leave or cut tissue at the brain edge; check the outline there." if approx else ""), "Whole case")
     if res.get("rejected"):
         add("info", "Clinician correction applied", f"{len(res['rejected'])} predicted region{'s' if len(res['rejected']) > 1 else ''} rejected by the reviewer "
             f"({res.get('removed_ml', 0):.2f} mL removed). Volumes and measurements reflect the corrected segmentation.", "Review tab")
@@ -508,7 +513,7 @@ if flagged else 'The program was <b>about as sure as it usually is</b> on scans 
 <style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@700&display=swap');{_CSS}</style></head><body><div class="page">
 <div class="hd"><div><div class="org">NeuroScope</div><div class="ttl">Automated MRI brain tumour segmentation report</div></div>
 <div class="rid">Report ID {rid}<br>{time.strftime('%d %b %Y, %H:%M', now)}<br>{'Automated, edited by reviewer' if res.get('rejected') else 'Preliminary, automated'}</div></div>
-<div class="kv"><div><b>Case</b>{e(case_label)}</div><div><b>Examination</b>MRI brain, multi-parametric</div><div><b>Sequences used</b>{', '.join(mods)}</div>
+<div class="kv"><div><b>Case</b>{e(case_label)}</div><div><b>Examination</b>MRI brain, multi-parametric{' (hospital DICOM import)' if res.get('import_log') else ''}</div><div><b>Sequences used</b>{', '.join(mods)}</div>
 <div><b>Sequences missing</b>{', '.join(miss) or 'None'}</div><div><b>Input quality</b>{e(q.status)} ({q.score:.2f})</div><div><b>Processing</b>{mc} MC samples, {e(device.upper())}, {infer_s:.1f} s</div></div>
 <div class="status"><b>{status[0]}</b><span>{status[1]}</span></div>
 <h3>1. Technique</h3><p>Automated slice-wise segmentation with a 2D U-Net (7.8 M parameters) trained on BraTS 2020 with modality dropout. Labels: necrotic or non-enhancing

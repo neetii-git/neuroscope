@@ -10,7 +10,7 @@ font = "sans serif"
 gatherUsageStats = false
 
 [server]
-maxUploadSize = 400
+maxUploadSize = 1024
 
 [client]
 showErrorDetails = "none"

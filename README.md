@@ -120,6 +120,10 @@ four sequences. The result page has five tabs:
 - **Uncertainty** - per-slice tumour volume and uncertainty profile, nested-region volumes, and a scatter of the
   current case against every held-out test patient (uncertainty vs Dice) with the validated review threshold.
 - **Performance** - test Dice for all 15 sequence combinations, training curve, risk-coverage curve, model card.
+- **Hospital scans** - upload the zipped DICOM folder from an MRI CD or a hospital download. NeuroScope groups the images into series,
+  skips diffusion, localiser and other non-structural series, detects FLAIR, T1, T1 with contrast and T2 from the series descriptions and
+  acquisition parameters (editable before running), resamples them onto one 1 mm grid, aligns them with rigid registration, removes the
+  skull (HD-BET when installed, otherwise an approximate morphological method) and runs the analysis. Patient names and IDs are never read into the results.
 - **Measure and review** - automatic bidimensional measurement of the enhancing tumour (longest diameter and longest perpendicular diameter on the
   axial slice where their product is largest, as used in the RANO response criteria), drawn on the image; a list of every separate predicted region
   with volume, slice range and uncertainty, where a reviewer can reject false positives. All tabs and the report then use the corrected segmentation.

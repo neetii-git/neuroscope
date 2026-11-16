@@ -34,6 +34,7 @@ from viz3d import brain_html
 from report import analyse, build_figures, gray_volume, rano_panel, report_html  # noqa: E402
 from clinical import apply_rejections, bidimensional, response_category, simulate_prior
 from clinical import components as find_components  # noqa: E402
+import dicom_import  # noqa: E402
 
 try:
     from skimage.measure import marching_cubes
@@ -639,10 +640,17 @@ with st.sidebar:
                                     help="Shows how the model behaves when a scan is unavailable. At least one sequence must remain."))
     use_demo = st.button("Load example patient", type="primary", width="stretch", disabled=not has_demo,
                          help="An anonymised case from the BraTS 2020 test split (never used in training)")
-    st.caption("Or upload MRI files (.nii / .nii.gz). Any subset of the four sequences works. "
-               "Privacy: scans are processed in memory for this session only. Nothing is stored on the server.")
-    uploads = {m: st.file_uploader(MOD_LABEL[m], type=["nii", "gz"], key=m) for m in MODALITIES}
-    seg_upload = st.file_uploader("Ground-truth mask (optional)", type=["nii", "gz"], key="seg") if not simple else None
+    st.markdown("**Hospital scan**")
+    st.caption("The folder from the MRI CD or the hospital's download link, zipped (right-click the folder, Send to, Compressed folder).")
+    dicom_zip = st.file_uploader("MRI scan folder (.zip)", type=["zip"], key="dicom_zip", disabled=not dicom_import.HAVE_DICOM)
+    dicom_read = st.button("Read hospital scan", width="stretch", disabled=not dicom_import.HAVE_DICOM)
+    if not dicom_import.HAVE_DICOM:
+        st.caption("Hospital scan import needs: pip install pydicom SimpleITK")
+    with st.expander("Research files (.nii / .nii.gz)", expanded=not simple):
+        st.caption("One file per sequence, prepared like BraTS (skull removed, aligned). Any subset of the four sequences works.")
+        uploads = {m: st.file_uploader(MOD_LABEL[m], type=["nii", "gz"], key=m) for m in MODALITIES}
+        seg_upload = st.file_uploader("Ground-truth mask (optional)", type=["nii", "gz"], key="seg") if not simple else None
+    st.caption("Privacy: scans are processed for this session only. Nothing is stored on the server; names and IDs in hospital files are never read into the results.")
     st.markdown("**Step 2. Run**")
     mc_default = 4 if DEVICE == "cpu" else 8
     if simple:
@@ -663,7 +671,7 @@ sub_df = load_csv(os.path.join(results_dir, "subsets.csv"))
 hist_df = load_csv(os.path.join(os.path.dirname(os.path.abspath(ckpt_path)), "history.csv"))
 
 # ---------------- Header ----------------
-_landing = st.session_state.get("result") is None
+_landing = st.session_state.get("result") is None and not st.session_state.get("dicom")
 if _landing and os.path.isdir(ARGS.demo_dir):
     @st.cache_data(show_spinner=False)
     def _hero_html(demo_dir: str) -> str:
@@ -745,6 +753,77 @@ elif run:
                 st.stop()
             st.session_state.source = "Uploaded scans"
             status.update(label="Analysis complete", state="complete", expanded=False)
+
+# ---------------- Hospital scan (DICOM) ----------------
+if dicom_read:
+    if dicom_zip is None:
+        st.warning("Choose the zipped scan folder first.")
+    else:
+        old_ = st.session_state.get("dicom")
+        dicom_import.cleanup(old_["root"] if old_ else None)
+        st.session_state.dicom = None
+        try:
+            with st.spinner("Unzipping and reading the scan folder"):
+                root_ = dicom_import.extract_zip(dicom_zip.getvalue())
+                series_ = dicom_import.find_series(root_)
+                if not series_:
+                    dicom_import.cleanup(root_)
+                    raise ValueError("No DICOM images were found in the archive. Zip the whole folder copied from the CD.")
+                chosen_, notes_ = dicom_import.classify(series_)
+            st.session_state.dicom = {"root": root_, "series": series_, "chosen": chosen_, "notes": notes_}
+        except Exception as err:
+            st.error(f"The scan could not be read: {err}")
+
+_dc = st.session_state.get("dicom")
+if _dc:
+    st.markdown("### Hospital scan: check the detected sequences")
+    st.caption("NeuroScope found these image series. Diffusion, localiser and similar series are skipped automatically. "
+               "Change a choice below if a sequence was matched wrongly, then prepare and analyse.")
+    st.dataframe(pd.DataFrame([{"Series": s_.number, "Description": s_.description, "Images": s_.n,
+                                "Detected as": dicom_import.LABELS.get(s_.label, "") if s_.label else "",
+                                "Why": s_.reason or s_.excluded} for s_ in _dc["series"]]).set_index("Series"), width="stretch")
+    for n_ in _dc["notes"]:
+        st.warning(n_)
+    mr_ = [s_ for s_ in _dc["series"] if s_.modality == "MR"]
+    opts_ = ["Not available"] + [f"{s_.number}: {s_.description} ({s_.n} images)" for s_ in mr_]
+    cols_ = st.columns(4)
+    pick_ = {}
+    for i_, k_ in enumerate(["flair", "t1", "t1ce", "t2"]):
+        cur_ = _dc["chosen"].get(k_)
+        idx_ = 1 + mr_.index(cur_) if cur_ in mr_ else 0
+        sel_ = cols_[i_].selectbox(dicom_import.LABELS[k_], opts_, index=idx_, key=f"dc_{k_}")
+        if sel_ != "Not available":
+            pick_[k_] = mr_[opts_.index(sel_) - 1]
+    b1_, b2_ = st.columns([1, 4])
+    go_ = b1_.button("Prepare and analyse", type="primary", disabled=not pick_)
+    if b2_.button("Cancel"):
+        dicom_import.cleanup(_dc["root"]); st.session_state.dicom = None; st.rerun()
+    if go_:
+        with st.status("Preparing the hospital scan", expanded=True) as status:
+            try:
+                tgt_ = ("L", "P", "S")
+                if os.path.isdir(ARGS.demo_dir):
+                    tgt_ = tuple(nib.aff2axcodes(load_demo_case(ARGS.demo_dir)[1]))
+                vols_, aff_, log_ = dicom_import.prepare(_dc["root"], pick_, progress=st.write, target_axcodes=tgt_)
+                q_ = assess_case({m: vols_.get(m) for m in MODALITIES})
+                if q_.status == "fail":
+                    raise ValueError("the prepared scan failed the quality check: " + "; ".join(q_.warnings()))
+                st.write(f"Running the model {mc} times")
+                r_ = run_case(vols_, aff_, mc, ckpt_path)
+                r_["import_log"] = log_ + _dc["notes"]
+                st.session_state.result, st.session_state.source = r_, "Hospital scan (DICOM import)"
+                st.session_state.followup = None
+                status.update(label="Analysis complete", state="complete", expanded=False)
+            except Exception as err:
+                status.update(label="Could not prepare the scan", state="error")
+                st.error(f"{err}")
+                st.stop()
+            finally:
+                dicom_import.cleanup(_dc["root"])
+                st.session_state.dicom = None
+        st.rerun()
+    else:
+        st.stop()
 
 res = st.session_state.result
 if res is not None:
