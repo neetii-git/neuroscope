@@ -30,7 +30,8 @@ from neuroscope.inference.predictor import load_checkpoint, predict_volume  # no
 from neuroscope.quality.iqa import assess_case  # noqa: E402
 import streamlit.components.v1 as components  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from viz3d import brain_html  # noqa: E402
+from viz3d import brain_html
+from report import analyse, report_html  # noqa: E402
 
 try:
     from skimage.measure import marching_cubes
@@ -502,6 +503,45 @@ def report_markdown(r: Dict) -> str:
     return "\n".join(lines)
 
 
+def report_images(res) -> Dict:
+    """Three-panel PNGs (scan, prediction, uncertainty) for the largest and the most uncertain tumour slice."""
+    import base64, io
+    from PIL import Image
+    img, pred = res["img"], res["pred"]
+    a = analyse_cache(res)
+    base_i = MODALITIES.index("flair") if "flair" in res["present"] else MODALITIES.index(res["present"][0])
+    out = {}
+
+    def png(arr):
+        buf = io.BytesIO(); Image.fromarray(arr).resize((arr.shape[1] * 2, arr.shape[0] * 2), Image.BILINEAR).save(buf, "PNG")
+        return base64.b64encode(buf.getvalue()).decode("ascii")
+
+    def trio(z):
+        b, l, e = img[base_i][z], pred.labels[z], pred.entropy[z]
+        ys, xs = np.nonzero(l > 0)
+        if ys.size:
+            cy, cx, r = int(ys.mean()), int(xs.mean()), 70
+            y0, x0 = max(0, cy - r), max(0, cx - r); y1, x1 = min(b.shape[0], cy + r), min(b.shape[1], cx + r)
+            sl = (slice(y0, y1), slice(x0, x1))
+        else:
+            sl = (slice(None), slice(None))
+        b, l, e = b[sl], l[sl], e[sl]
+        return {"img": png(compose_rgb(b, l, e, False, False, 0, 0)), "pred": png(compose_rgb(b, l, e, True, False, 0.55, 0)),
+                "unc": png(compose_rgb(b, l, e, False, True, 0, 0.95))}
+    s = a.get("slices") or {}
+    if s.get("largest") is not None:
+        out["largest"] = trio(s["largest"])
+    if s.get("most_uncertain"):
+        out["uncertain"] = trio(s["most_uncertain"][0])
+    return out
+
+
+def analyse_cache(res):
+    if res.get("_analysis") is None:
+        res["_analysis"] = analyse(res, thr, bool(thr and res["pred"].case_uncertainty >= thr["threshold"]), sub_df, test_df, MODALITIES)
+    return res["_analysis"]
+
+
 def ci_txt(d):
     if not d:
         return None, ""
@@ -884,13 +924,19 @@ human-in-the-loop review, not a diagnostic device.
     with tab_report:
         report = build_report(res, flagged, thr, model_info)
         md = report_markdown(report)
-        d1, d2, d3 = st.columns(3)
+        analysis = analyse_cache(res)
+        if "_report_imgs" not in res:
+            res["_report_imgs"] = report_images(res)
+        rhtml = report_html(analysis, res, flagged, thr, model_info, str(st.session_state.get("source", "case")), res["_report_imgs"],
+                            pred.mc_samples, DEVICE, res["infer_s"])
+        d0, d1, d2, d3 = st.columns(4)
+        d0.download_button("Report (.html, print to PDF)", rhtml, file_name="neuroscope_report.html", mime="text/html", width="stretch", type="primary")
         d1.download_button("Report (.md)", md, file_name="neuroscope_report.md", width="stretch")
-        d2.download_button("Report (.json)", json.dumps(report, indent=2, default=float), file_name="neuroscope_report.json", width="stretch")
+        d2.download_button("Report (.json)", json.dumps({**report, "findings": analysis["findings"]}, indent=2, default=float), file_name="neuroscope_report.json", width="stretch")
         lab_full = uncrop(pred.labels, res["meta"]).astype(np.uint8)
         lab_full[lab_full == 3] = 4
         d3.download_button("Segmentation mask (.nii)", nib.Nifti1Image(lab_full, res["affine"]).to_bytes(), file_name="neuroscope_seg.nii", width="stretch")
-        st.markdown(md)
+        components.html(rhtml, height=1500, scrolling=True)
 
     if st.button("Clear"):
         st.session_state.result = None

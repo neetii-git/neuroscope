@@ -120,7 +120,7 @@ four sequences. The result page has five tabs:
 - **Uncertainty** - per-slice tumour volume and uncertainty profile, nested-region volumes, and a scatter of the
   current case against every held-out test patient (uncertainty vs Dice) with the validated review threshold.
 - **Performance** - test Dice for all 15 sequence combinations, training curve, risk-coverage curve, model card.
-- **Report** - Markdown / JSON report and the segmentation mask as NIfTI.
+- **Report** - a printable clinical-style report (HTML, print to PDF): status, tumour location and volumes, reliability gauge against the validated threshold, a findings-and-faults list (uncertainty above threshold, missing-sequence impact, input-quality issues, most uncertain slices and region, border uncertainty, isolated fragments, disagreement with the expert outline), key slice images and an uncertainty-per-slice profile. Also Markdown, JSON and the NIfTI mask.
 
 In Detailed view the example patient can be re-run with chosen sequences removed, to show the missing-modality behaviour.
 The landing page shows the validated test-set numbers, read live from `runs/base/results/summary.json`.
