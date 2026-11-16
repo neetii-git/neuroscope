@@ -44,12 +44,12 @@ LABEL_NAMES = {0: "background", 1: "necrotic / non-enhancing core", 2: "edema", 
 REGION_NAMES = ["Whole tumour", "Tumour core", "Enhancing tumour"]
 REGION_KEYS = ["WT_ml", "TC_ml", "ET_ml"]
 REGION_HEX = ["#2ca02c", "#d62728", "#ffbf00"]
-SCENE_BG = "#0B1220"
+SCENE_BG = "#0B0C0E"
 MOD_LABEL = {"t1": "T1", "t1ce": "T1ce (contrast)", "t2": "T2", "flair": "FLAIR"}
 LOG2 = float(np.log(2))
-PLOT_BG = "#EADFC9"
-ACCENT = "#7B2CBF"   # electric purple, used sparingly
-GREEN = "#2E7D32"
+PLOT_BG = "#17181B"
+ACCENT = "#F5C518"   # yellow accent, used sparingly
+GREEN = "#B8BABF"   # neutral grey for bars
 
 
 def parse_args():
@@ -68,22 +68,29 @@ if DEVICE == "cpu":
 
 CSS = """
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
+html, body, [class*="css"], .stApp, button, input, textarea {font-family: 'Inter', 'Segoe UI', system-ui, sans-serif !important;}
+h1, h2, h3, h4, div[data-testid="stMetricValue"] {font-family: 'Space Grotesk', 'Inter', 'Segoe UI', sans-serif !important; letter-spacing: -0.015em;}
 #MainMenu, footer {visibility: hidden;}
+.stApp {background: #0E0F11; color: #ECECEA;}
 .block-container {padding-top: 1.2rem; max-width: 1280px;}
-div[data-testid="stMetric"] {background: linear-gradient(145deg, #F0E6D2, #E2D5BA); border: 1px solid #D4C5A5; border-radius: 14px; padding: 12px 16px;
-  box-shadow: 0 1px 0 #fff8 inset, 0 8px 18px -10px #2E6B3F66, 0 2px 4px #0001; transform-style: preserve-3d; transition: transform .18s ease-out, box-shadow .18s ease-out; will-change: transform;}
-div[data-testid="stMetric"]:hover {box-shadow: 0 14px 26px -12px #2E6B3F88, 0 3px 6px #0002;}
-div[data-testid="stMetricValue"] {color: #2E6B3F; transform: translateZ(24px);}
-h1, h2, h3 {color: #1E2A1F; letter-spacing: -0.01em;}
-div[data-testid="stTabs"] button[role="tab"] {border-radius: 10px 10px 0 0; transition: background .15s, transform .15s;}
-div[data-testid="stTabs"] button[role="tab"]:hover {background: #7B2CBF14; transform: translateY(-2px);}
-div[data-testid="stTabs"] button[aria-selected="true"] {color: #7B2CBF; background: #7B2CBF10;}
-.stButton > button, .stDownloadButton > button {border-radius: 12px; transition: transform .15s, box-shadow .15s; box-shadow: 0 6px 14px -8px #2E6B3F99;}
-.stButton > button:hover, .stDownloadButton > button:hover {transform: translateY(-2px) perspective(400px) rotateX(4deg); box-shadow: 0 12px 20px -10px #2E6B3FAA;}
+section[data-testid="stSidebar"] {background: #141517; box-shadow: 6px 0 24px -14px #000;}
+h1, h2, h3, h4 {color: #F2F2F0;}
+div[data-testid="stMetric"] {background: linear-gradient(150deg, #1D1F23, #141517); border: 1px solid #2C2E33; border-radius: 14px; padding: 12px 16px;
+  box-shadow: 0 1px 0 #ffffff0d inset, 0 12px 22px -14px #000, 0 2px 4px #0006; transform-style: preserve-3d; transition: transform .18s ease-out, box-shadow .18s ease-out, border-color .18s; will-change: transform;}
+div[data-testid="stMetric"]:hover {border-color: #F5C51877; box-shadow: 0 18px 30px -14px #000, 0 0 0 1px #F5C51833;}
+div[data-testid="stMetricValue"] {color: #F5C518; transform: translateZ(24px);}
+div[data-testid="stMetricLabel"] {color: #A3A5AA;}
+div[data-testid="stTabs"] button[role="tab"] {border-radius: 10px 10px 0 0; transition: background .15s, transform .15s; color: #A3A5AA;}
+div[data-testid="stTabs"] button[role="tab"]:hover {background: #F5C5180F; transform: translateY(-2px); color: #ECECEA;}
+div[data-testid="stTabs"] button[aria-selected="true"] {color: #F5C518; background: #F5C51810;}
+.stButton > button, .stDownloadButton > button {background: #1D1F23; color: #ECECEA; border: 1px solid #34363B; border-radius: 12px; transition: transform .15s, box-shadow .15s, border-color .15s; box-shadow: 0 8px 16px -10px #000;}
+.stButton > button:hover, .stDownloadButton > button:hover {border-color: #F5C518; color: #F5C518; transform: translateY(-2px) perspective(400px) rotateX(4deg); box-shadow: 0 14px 22px -12px #000;}
+.stButton > button[kind="primary"] {background: #F5C518; color: #0E0F11; border-color: #F5C518; font-weight: 600;}
+.stButton > button[kind="primary"]:hover {background: #FFD84A; color: #0E0F11;}
 div[data-testid="stPlotlyChart"], div[data-testid="stDataFrame"], iframe {border-radius: 14px;}
-div[data-testid="stPlotlyChart"] {box-shadow: 0 10px 24px -14px #1E2A1F66; transition: box-shadow .2s;}
+div[data-testid="stPlotlyChart"] {box-shadow: 0 14px 28px -16px #000; border: 1px solid #25272B;}
 div[data-testid="stAlert"] {border-radius: 12px;}
-section[data-testid="stSidebar"] {box-shadow: 6px 0 20px -14px #1E2A1F55;}
 @media (prefers-reduced-motion: reduce) {* {transition: none !important;}}
 </style>
 """
@@ -109,9 +116,9 @@ try {
 
 
 def dark(fig: go.Figure, h: int = 420) -> go.Figure:
-    fig.update_layout(template="plotly_white", paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG, height=h,
-                      margin=dict(l=10, r=10, t=36, b=10), font=dict(color="#1E2A1F"))
-    fig.update_xaxes(gridcolor="#D9CBB0", zerolinecolor="#D9CBB0"); fig.update_yaxes(gridcolor="#D9CBB0", zerolinecolor="#D9CBB0")
+    fig.update_layout(template="plotly_dark", paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG, height=h,
+                      margin=dict(l=10, r=10, t=36, b=10), font=dict(color="#ECECEA", family="Inter, Segoe UI, sans-serif"))
+    fig.update_xaxes(gridcolor="#2C2E33", zerolinecolor="#2C2E33"); fig.update_yaxes(gridcolor="#2C2E33", zerolinecolor="#2C2E33")
     return fig
 
 
@@ -208,7 +215,7 @@ def compose_rgb(base, labels, ent, show_seg, show_unc, seg_alpha, unc_alpha, gt=
     if show_unc:
         e = np.clip(ent / LOG2, 0, 1)
         w = e[..., None] * unc_alpha
-        rgb = rgb * (1 - w) + np.array([0.54, 0.17, 0.89]) * w   # purple glow for uncertainty
+        rgb = rgb * (1 - w) + np.array([0.98, 0.96, 0.88]) * w   # white glow for uncertainty
     if show_seg:
         for lab, col in LABEL_RGB.items():
             m = labels == lab
@@ -348,7 +355,7 @@ def fig_slice_profile(res, z_cur: int):
     fig = go.Figure()
     fig.add_trace(go.Bar(x=np.arange(D), y=area, name="Tumour volume per slice (mL)", marker_color=GREEN, opacity=0.55))
     fig.add_trace(go.Scatter(x=np.arange(D), y=ent, name="Mean uncertainty in brain", yaxis="y2", line=dict(color=ACCENT, width=2)))
-    fig.add_vline(x=z_cur, line=dict(color="#1E2A1F", dash="dot"), annotation_text=f"slice {z_cur}", annotation_position="top")
+    fig.add_vline(x=z_cur, line=dict(color="#ECECEA", dash="dot"), annotation_text=f"slice {z_cur}", annotation_position="top")
     fig.update_layout(title=dict(text="Per-slice profile", x=0.02, font=dict(size=14)), xaxis_title="axial slice",
                       yaxis=dict(title="mL"), yaxis2=dict(title="entropy", overlaying="y", side="right", showgrid=False),
                       legend=dict(orientation="h", y=1.12), barmode="overlay")
@@ -375,9 +382,9 @@ def fig_case_vs_test(test_df: pd.DataFrame, thr: Dict, case_u: float, case_dice:
     fig.add_trace(go.Scatter(x=test_df["uncertainty"][fail], y=test_df["dice_WT"][fail], mode="markers", name=f"test patients, Dice < {tau}",
                              marker=dict(color="#8B3A3A", size=9, symbol="x"), text=ids[fail],
                              hovertemplate="%{text}<br>uncertainty %{x:.4f}<br>Dice %{y:.3f}<extra></extra>"))
-    fig.add_vline(x=thr["threshold"], line=dict(color="#1E2A1F", dash="dash"), annotation_text="threshold", annotation_position="top right")
+    fig.add_vline(x=thr["threshold"], line=dict(color="#ECECEA", dash="dash"), annotation_text="threshold", annotation_position="top right")
     if case_dice is not None:
-        fig.add_trace(go.Scatter(x=[case_u], y=[case_dice], mode="markers", name="this case", marker=dict(color=ACCENT, size=18, symbol="star", line=dict(color="#1E2A1F", width=1))))
+        fig.add_trace(go.Scatter(x=[case_u], y=[case_dice], mode="markers", name="this case", marker=dict(color=ACCENT, size=18, symbol="star", line=dict(color="#ECECEA", width=1))))
     else:
         fig.add_vline(x=case_u, line=dict(color=ACCENT, width=3), annotation_text="this case", annotation_position="bottom left")
     fig.update_layout(title=dict(text=f"This case against {len(test_df)} held-out test patients", x=0.02, font=dict(size=14)),
@@ -416,7 +423,7 @@ def fig_history(hist: pd.DataFrame):
         if c in hist:
             fig.add_trace(go.Scatter(x=hist["epoch"], y=hist[c], name=nm, mode="lines+markers", line=dict(color=col)))
     if "train_loss" in hist:
-        fig.add_trace(go.Scatter(x=hist["epoch"], y=hist["train_loss"], name="train loss", yaxis="y2", line=dict(dash="dot", color="#8A7A5C")))
+        fig.add_trace(go.Scatter(x=hist["epoch"], y=hist["train_loss"], name="train loss", yaxis="y2", line=dict(dash="dot", color="#7C7F86")))
     fig.update_layout(title=dict(text="Training curve", x=0.02, font=dict(size=14)), xaxis_title="epoch", yaxis_title="Dice",
                       yaxis2=dict(title="loss", overlaying="y", side="right", showgrid=False), legend=dict(orientation="h", y=1.1))
     return dark(fig, 320)
@@ -682,7 +689,7 @@ else:
             if gl_plane:
                 st.session_state.z = st.slider("Axial slice", 0, img.shape[1] - 1, st.session_state.z, key="z_gl")
             st.caption("Buttons in the scene: Brain / Tumour / Uncertainty / Slice / Rotate / Reset. "
-                       "Uncertainty recolours the tumour: bright purple where the repeated runs disagreed. Every point is a voxel of this patient's scan.")
+                       "Uncertainty recolours the tumour: bright white where the repeated runs disagreed. Every point is a voxel of this patient's scan.")
         with g1:
             @st.cache_data(show_spinner=False)
             def _gl_html(src: str, mod: str, z: Optional[int], mc_: int, tok: float):
@@ -702,7 +709,7 @@ else:
             seg_alpha = st.slider("Outline opacity", 0.1, 1.0, 0.55)
             unc_alpha = st.slider("Uncertainty opacity", 0.1, 1.0, 0.8) if show_unc else 0.8
             show_gt = st.checkbox("Expert outline (contour)", False) if (res["seg"] is not None and not simple) else False
-            st.caption("Red: necrotic / non-enhancing core. Green: edema. Yellow: enhancing tumour. Purple glow: uncertainty. Hover for a per-pixel readout; scroll to zoom, drag to pan.")
+            st.caption("Red: necrotic / non-enhancing core. Green: edema. Yellow: enhancing tumour. White glow: uncertainty. Hover for a per-pixel readout; scroll to zoom, drag to pan.")
         with b:
             n = img.shape[1 + axis]
             if axis == 0:
@@ -795,7 +802,7 @@ else:
                 g1, g2 = st.columns(2)
                 g1.plotly_chart(key="rob_a", figure_or_data=slice_figure(full["img"][MODALITIES.index(bm)][zc], p1.labels[zc], p1.entropy[zc], True, True, 0.55, 0.8, None, f"All four, slice {zc}"), width="stretch")
                 g2.plotly_chart(key="rob_b", figure_or_data=slice_figure(r2["img"][MODALITIES.index(bm)][zc], p2.labels[zc], p2.entropy[zc], True, True, 0.55, 0.8, None, f"Without {', '.join(m.upper() for m in dr)}, slice {zc}"), width="stretch")
-                st.caption("Uncertainty is shown as the purple glow. When a sequence is missing, the model usually becomes less certain in exactly the regions that depend on it, which is the intended behaviour.")
+                st.caption("Uncertainty is shown as the white glow. When a sequence is missing, the model usually becomes less certain in exactly the regions that depend on it, which is the intended behaviour.")
         else:
             st.info("Available for the example patient. For uploaded scans, simply leave out a file in the sidebar and run again.")
         if sub_df is not None:

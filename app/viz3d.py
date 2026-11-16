@@ -84,18 +84,20 @@ def brain_html(vol: np.ndarray, labels: Optional[np.ndarray] = None, entropy: Op
     return f"""
 <!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
- html,body{{margin:0;height:100%;background:#070B14;overflow:hidden;font-family:-apple-system,Segoe UI,Roboto,sans-serif}}
+ @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600&display=swap');
+ #ov h1{{font-family:'Space Grotesk','Inter',sans-serif}}
+ html,body{{margin:0;height:100%;background:#0B0C0E;overflow:hidden;font-family:'Inter','Segoe UI',system-ui,sans-serif}}
  #c{{width:100%;height:100%;display:block}}
  #ov{{position:absolute;left:22px;top:18px;color:#E5E7EB;pointer-events:none}}
  #ov h1{{margin:0;font-size:30px;font-weight:600;letter-spacing:-0.02em}}
  #ov p{{margin:6px 0 0 0;font-size:13px;color:#94A3B8;max-width:420px;line-height:1.4}}
  #bar{{position:absolute;right:14px;top:14px;display:{ctrl_display};gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:60%}}
  #bar button{{background:rgba(17,24,39,.75);color:#E5E7EB;border:1px solid #334155;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer}}
- #bar button.on{{background:#2E6B3F;border-color:#2E6B3F}}
+ #bar button.on{{background:#F5C518;border-color:#F5C518;color:#0E0F11}}
  #leg{{position:absolute;left:22px;bottom:14px;color:#94A3B8;font-size:12px;display:flex;gap:14px}}
  #leg i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}}
- .vol{{font-weight:500;color:#E5E7EB;margin-left:5px}} .tag{{position:absolute;transform:translate(-50%,-130%);background:rgba(11,18,32,.82);border:1px solid #334155;border-radius:7px;padding:3px 8px;font-size:11px;color:#E5E7EB;cursor:pointer;white-space:nowrap;pointer-events:auto}} .tag:hover{{border-color:#7B2CBF}}
- .lg{{cursor:pointer;user-select:none}} .lg:not(.on){{opacity:.35;text-decoration:line-through}} #cutw{{display:inline-flex;align-items:center;gap:6px}} #cut{{width:120px;accent-color:#7B2CBF}}
+ .vol{{font-weight:500;color:#E5E7EB;margin-left:5px}} .tag{{position:absolute;transform:translate(-50%,-130%);background:rgba(11,18,32,.82);border:1px solid #334155;border-radius:7px;padding:3px 8px;font-size:11px;color:#E5E7EB;cursor:pointer;white-space:nowrap;pointer-events:auto}} .tag:hover{{border-color:#F5C518}}
+ .lg{{cursor:pointer;user-select:none}} .lg:not(.on){{opacity:.35;text-decoration:line-through}} #cutw{{display:inline-flex;align-items:center;gap:6px}} #cut{{width:120px;accent-color:#F5C518}}
  #hint{{position:absolute;right:16px;bottom:12px;color:#64748B;font-size:11px}}
 </style></head><body>
 <canvas id="c"></canvas>
@@ -110,7 +112,7 @@ def brain_html(vol: np.ndarray, labels: Optional[np.ndarray] = None, entropy: Op
  <button id="bReset">Reset</button>
  <button id="bShot">Screenshot</button>
 </div>
-<div id="leg"><span class="lg on" data-g="1"><i style="background:#ff3333"></i>necrotic core<b class="vol" id="v1"></b></span><span class="lg on" data-g="2"><i style="background:#33cc33"></i>edema<b class="vol" id="v2"></b></span><span class="lg on" data-g="3"><i style="background:#ffd91a"></i>enhancing<b class="vol" id="v3"></b></span><span id="cutw">cut through <input id="cut" type="range" min="0" max="100" value="100"></span><span id="legU" style="display:none"><i style="background:#a855f7"></i>uncertainty (bright = unsure)</span></div>
+<div id="leg"><span class="lg on" data-g="1"><i style="background:#ff3333"></i>necrotic core<b class="vol" id="v1"></b></span><span class="lg on" data-g="2"><i style="background:#33cc33"></i>edema<b class="vol" id="v2"></b></span><span class="lg on" data-g="3"><i style="background:#ffd91a"></i>enhancing<b class="vol" id="v3"></b></span><span id="cutw">cut through <input id="cut" type="range" min="0" max="100" value="100"></span><span id="legU" style="display:none"><i style="background:#F2F2F0"></i>uncertainty (bright = unsure)</span></div>
 <div id="tags"></div>
 <div id="hint">drag to rotate, scroll to zoom, right-drag to pan</div>
 <script>{_vendor_js()}</script>
@@ -142,7 +144,7 @@ scene.add(brain);
 const m=tp.length/3, tpos=new Float32Array(m*3), tcolL=new Float32Array(m*3), tcolU=new Float32Array(m*3);
 const LC={{1:[1.0,0.2,0.2],2:[0.2,0.8,0.2],3:[1.0,0.85,0.1]}};
 const JT={tumour_step}*0.8; for(let i=0;i<m;i++){{tpos[3*i]=tp[3*i+2]+(Math.random()-0.5)*JT;tpos[3*i+1]=tp[3*i+1]+(Math.random()-0.5)*JT;tpos[3*i+2]=tp[3*i]+(Math.random()-0.5)*JT;const c=LC[tl[i]]||[1,1,1];tcolL[3*i]=c[0];tcolL[3*i+1]=c[1];tcolL[3*i+2]=c[2];
- const u=te[i]/255; tcolU[3*i]=0.15+0.65*u; tcolU[3*i+1]=0.05+0.25*u; tcolU[3*i+2]=0.25+0.75*u;}}
+ const u=te[i]/255; tcolU[3*i]=0.12+0.88*u; tcolU[3*i+1]=0.12+0.84*u; tcolU[3*i+2]=0.12+0.70*u;}}
 const groups=[];
 function mkGroup(labels,opacity,size,order,additive){{
   const idx=[];for(let i=0;i<m;i++)if(labels.indexOf(tl[i])>=0)idx.push(i);
