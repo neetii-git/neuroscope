@@ -92,6 +92,7 @@ def brain_html(vol: np.ndarray, labels: Optional[np.ndarray] = None, entropy: Op
  #bar button.on{{background:#2E6B3F;border-color:#2E6B3F}}
  #leg{{position:absolute;left:22px;bottom:14px;color:#94A3B8;font-size:12px;display:flex;gap:14px}}
  #leg i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}}
+ .lg{{cursor:pointer;user-select:none}} .lg:not(.on){{opacity:.35;text-decoration:line-through}} #cutw{{display:inline-flex;align-items:center;gap:6px}} #cut{{width:120px;accent-color:#7B2CBF}}
  #hint{{position:absolute;right:16px;bottom:12px;color:#64748B;font-size:11px}}
 </style></head><body>
 <canvas id="c"></canvas>
@@ -104,7 +105,7 @@ def brain_html(vol: np.ndarray, labels: Optional[np.ndarray] = None, entropy: Op
  <button id="bRot" class="{'on' if autorotate else ''}">Rotate</button>
  <button id="bReset">Reset</button>
 </div>
-<div id="leg"><span><i style="background:#ff3333"></i>necrotic core</span><span><i style="background:#33cc33"></i>edema</span><span><i style="background:#ffd91a"></i>enhancing</span><span id="legU" style="display:none"><i style="background:#a855f7"></i>uncertainty (bright = unsure)</span></div>
+<div id="leg"><span class="lg on" data-g="1"><i style="background:#ff3333"></i>necrotic core</span><span class="lg on" data-g="2"><i style="background:#33cc33"></i>edema</span><span class="lg on" data-g="3"><i style="background:#ffd91a"></i>enhancing</span><span id="cutw">cut through <input id="cut" type="range" min="0" max="100" value="100"></span><span id="legU" style="display:none"><i style="background:#a855f7"></i>uncertainty (bright = unsure)</span></div>
 <div id="hint">drag to rotate, scroll to zoom, right-drag to pan</div>
 <script>{_vendor_js()}</script>
 <script>
@@ -135,9 +136,19 @@ const m=tp.length/3, tpos=new Float32Array(m*3), tcolL=new Float32Array(m*3), tc
 const LC={{1:[1.0,0.2,0.2],2:[0.2,0.8,0.2],3:[1.0,0.85,0.1]}};
 const JT={tumour_step}*0.8; for(let i=0;i<m;i++){{tpos[3*i]=tp[3*i+2]+(Math.random()-0.5)*JT;tpos[3*i+1]=tp[3*i+1]+(Math.random()-0.5)*JT;tpos[3*i+2]=tp[3*i]+(Math.random()-0.5)*JT;const c=LC[tl[i]]||[1,1,1];tcolL[3*i]=c[0];tcolL[3*i+1]=c[1];tcolL[3*i+2]=c[2];
  const u=te[i]/255; tcolU[3*i]=0.15+0.65*u; tcolU[3*i+1]=0.05+0.25*u; tcolU[3*i+2]=0.25+0.75*u;}}
-const tg=new THREE.BufferGeometry(); tg.setAttribute('position',new THREE.BufferAttribute(tpos,3)); tg.setAttribute('color',new THREE.BufferAttribute(tcolL,3));
-const tum=new THREE.Points(tg,new THREE.PointsMaterial({{size:{tumour_step*2.4},map:tex,vertexColors:true,transparent:true,opacity:0.95,depthWrite:false,blending:THREE.AdditiveBlending}}));
-scene.add(tum);
+const groups=[];
+function mkGroup(labels,opacity,size,order,additive){{
+  const idx=[];for(let i=0;i<m;i++)if(labels.indexOf(tl[i])>=0)idx.push(i);
+  const P=new Float32Array(idx.length*3),CL=new Float32Array(idx.length*3),CU=new Float32Array(idx.length*3);
+  idx.forEach((k,q)=>{{for(let a=0;a<3;a++){{P[3*q+a]=tpos[3*k+a];CL[3*q+a]=tcolL[3*k+a];CU[3*q+a]=tcolU[3*k+a];}}}});
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(P,3));g.setAttribute('color',new THREE.BufferAttribute(CL,3));
+  const pm=new THREE.Points(g,new THREE.PointsMaterial({{size:size,map:tex,vertexColors:true,transparent:true,opacity:opacity,depthWrite:false,blending:additive?THREE.AdditiveBlending:THREE.NormalBlending,sizeAttenuation:true}}));
+  pm.renderOrder=order;scene.add(pm);groups.push({{g:g,CL:CL,CU:CU,pm:pm,lab:labels[0]}});return pm;
+}}
+// edema (green) is a soft translucent shell; necrotic core (red) and enhancing (yellow) are drawn last and opaque so they stay visible
+mkGroup([2],0.22,{tumour_step}*2.2,2,true);
+mkGroup([3],0.6,{tumour_step}*2.4,3,false);
+mkGroup([1],1.0,{tumour_step}*2.6,4,false);
 // slice plane
 let plane=null;
 const sliceSrc="{slice_img}";
@@ -145,8 +156,16 @@ if(sliceSrc){{new THREE.TextureLoader().load(sliceSrc,t=>{{const g=new THREE.Pla
 // controls
 const on=(id,f)=>document.getElementById(id).addEventListener('click',e=>{{f(e.currentTarget)}});
 on('bBrain',b=>{{brain.visible=!brain.visible;b.classList.toggle('on',brain.visible)}});
-on('bTum',b=>{{tum.visible=!tum.visible;b.classList.toggle('on',tum.visible)}});
-let unc=false; on('bUnc',b=>{{if(!hasUnc)return;unc=!unc;tg.setAttribute('color',new THREE.BufferAttribute(unc?tcolU:tcolL,3));tg.attributes.color.needsUpdate=true;b.classList.toggle('on',unc);document.getElementById('legU').style.display=unc?'inline':'none';}});
+let tumOn=true; on('bTum',b=>{{tumOn=!tumOn;applyVis();b.classList.toggle('on',tumOn)}});
+const lgOn={{1:true,2:true,3:true}};
+document.querySelectorAll('.lg').forEach(el=>el.addEventListener('click',()=>{{const k=+el.dataset.g;lgOn[k]=!lgOn[k];el.classList.toggle('on',lgOn[k]);applyVis();}}));
+function applyVis(){{groups.forEach(o=>{{o.pm.visible=tumOn&&lgOn[o.lab];}});}}
+renderer.localClippingEnabled=true;
+const clip=new THREE.Plane(new THREE.Vector3(0,0,-1),1e6);
+brain.material.clippingPlanes=[clip];groups.forEach(o=>{{o.pm.material.clippingPlanes=[clip];}});
+document.getElementById('cut').addEventListener('input',e=>{{const f=e.target.value/100;clip.constant=f>=0.995?1e6:D*f;}});
+
+let unc=false; on('bUnc',b=>{{if(!hasUnc)return;unc=!unc;groups.forEach(o=>{{o.g.setAttribute('color',new THREE.BufferAttribute(unc?o.CU:o.CL,3));o.g.attributes.color.needsUpdate=true;}});b.classList.toggle('on',unc);document.getElementById('legU').style.display=unc?'inline':'none';}});
 on('bSlice',b=>{{if(plane){{plane.visible=!plane.visible;b.classList.toggle('on',plane.visible)}}}});
 on('bRot',b=>{{ctr.autoRotate=!ctr.autoRotate;b.classList.toggle('on',ctr.autoRotate)}});
 on('bReset',()=>resetCam());
