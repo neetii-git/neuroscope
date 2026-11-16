@@ -6,6 +6,7 @@ renders them client-side with additive-blended points. No server round-trips whi
 from __future__ import annotations
 
 import base64
+import json
 import io
 import os
 from typing import Optional
@@ -48,7 +49,8 @@ def _slice_png(sl: np.ndarray) -> str:
 
 def brain_html(vol: np.ndarray, labels: Optional[np.ndarray] = None, entropy: Optional[np.ndarray] = None,
                brain_step: int = 3, tumour_step: int = 2, height: int = 560, title: str = "", subtitle: str = "",
-               slice_z: Optional[int] = None, autorotate: bool = True, show_controls: bool = True) -> str:
+               slice_z: Optional[int] = None, autorotate: bool = True, show_controls: bool = True,
+               volumes: Optional[dict] = None) -> str:
     """vol: (D,H,W) float, zero outside brain. labels: (D,H,W) int 0..3. entropy: (D,H,W) float."""
     vol = np.asarray(vol, np.float32)
     mask = vol != 0
@@ -92,6 +94,7 @@ def brain_html(vol: np.ndarray, labels: Optional[np.ndarray] = None, entropy: Op
  #bar button.on{{background:#2E6B3F;border-color:#2E6B3F}}
  #leg{{position:absolute;left:22px;bottom:14px;color:#94A3B8;font-size:12px;display:flex;gap:14px}}
  #leg i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}}
+ .vol{{font-weight:500;color:#E5E7EB;margin-left:5px}} .tag{{position:absolute;transform:translate(-50%,-130%);background:rgba(11,18,32,.82);border:1px solid #334155;border-radius:7px;padding:3px 8px;font-size:11px;color:#E5E7EB;cursor:pointer;white-space:nowrap;pointer-events:auto}} .tag:hover{{border-color:#7B2CBF}}
  .lg{{cursor:pointer;user-select:none}} .lg:not(.on){{opacity:.35;text-decoration:line-through}} #cutw{{display:inline-flex;align-items:center;gap:6px}} #cut{{width:120px;accent-color:#7B2CBF}}
  #hint{{position:absolute;right:16px;bottom:12px;color:#64748B;font-size:11px}}
 </style></head><body>
@@ -103,19 +106,23 @@ def brain_html(vol: np.ndarray, labels: Optional[np.ndarray] = None, entropy: Op
  <button id="bUnc">Uncertainty</button>
  <button id="bSlice" class="{'on' if slice_img else ''}" style="display:{'inline-block' if slice_img else 'none'}">Slice</button>
  <button id="bRot" class="{'on' if autorotate else ''}">Rotate</button>
+ <button id="bFocus">Focus tumour</button>
  <button id="bReset">Reset</button>
+ <button id="bShot">Screenshot</button>
 </div>
-<div id="leg"><span class="lg on" data-g="1"><i style="background:#ff3333"></i>necrotic core</span><span class="lg on" data-g="2"><i style="background:#33cc33"></i>edema</span><span class="lg on" data-g="3"><i style="background:#ffd91a"></i>enhancing</span><span id="cutw">cut through <input id="cut" type="range" min="0" max="100" value="100"></span><span id="legU" style="display:none"><i style="background:#a855f7"></i>uncertainty (bright = unsure)</span></div>
+<div id="leg"><span class="lg on" data-g="1"><i style="background:#ff3333"></i>necrotic core<b class="vol" id="v1"></b></span><span class="lg on" data-g="2"><i style="background:#33cc33"></i>edema<b class="vol" id="v2"></b></span><span class="lg on" data-g="3"><i style="background:#ffd91a"></i>enhancing<b class="vol" id="v3"></b></span><span id="cutw">cut through <input id="cut" type="range" min="0" max="100" value="100"></span><span id="legU" style="display:none"><i style="background:#a855f7"></i>uncertainty (bright = unsure)</span></div>
+<div id="tags"></div>
 <div id="hint">drag to rotate, scroll to zoom, right-drag to pan</div>
 <script>{_vendor_js()}</script>
 <script>
 const b64=(s,T)=>{{const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return new T(u.buffer);}};
 const D={D},H={H},W={W};
+const VOLS={json.dumps({str(k): float(v) for k, v in (volumes or {}).items()})};
 const bp=b64("{_b64(idx)}",Int16Array), bi=b64("{_b64(inten)}",Uint8Array);
 const tp=b64("{_b64(t_pos)}",Int16Array), tl=b64("{_b64(t_lab)}",Uint8Array), te=b64("{_b64(t_ent)}",Uint8Array);
 const hasUnc={has_unc};
 const canvas=document.getElementById('c');
-const renderer=new THREE.WebGLRenderer({{canvas,antialias:true,alpha:false}});
+const renderer=new THREE.WebGLRenderer({{canvas,antialias:true,alpha:false,preserveDrawingBuffer:true}});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
 const scene=new THREE.Scene(); scene.background=new THREE.Color(0x070B14); scene.fog=new THREE.FogExp2(0x070B14,0.0018);
 const cam=new THREE.PerspectiveCamera(38,1,1,5000);
@@ -170,7 +177,20 @@ on('bSlice',b=>{{if(plane){{plane.visible=!plane.visible;b.classList.toggle('on'
 on('bRot',b=>{{ctr.autoRotate=!ctr.autoRotate;b.classList.toggle('on',ctr.autoRotate)}});
 on('bReset',()=>resetCam());
 if(!hasUnc)document.getElementById('bUnc').style.opacity=0.35;
+// region centroids, tags, fly-to, screenshot
+const REG={{1:{{n:'Necrotic core',c:[0,0,0],k:0}},2:{{n:'Edema',c:[0,0,0],k:0}},3:{{n:'Enhancing',c:[0,0,0],k:0}}}};
+for(let i=0;i<m;i++){{const r=REG[tl[i]];if(!r)continue;r.c[0]+=tpos[3*i];r.c[1]+=tpos[3*i+1];r.c[2]+=tpos[3*i+2];r.k++;}}
+Object.keys(REG).forEach(k=>{{const r=REG[k];if(r.k){{r.c=r.c.map(v=>v/r.k);}}const e=document.getElementById('v'+k);if(e&&VOLS[k]!==undefined)e.textContent=VOLS[k].toFixed(1)+' mL';}});
+const tagsEl=document.getElementById('tags');
+Object.keys(REG).forEach(k=>{{const r=REG[k];if(!r.k)return;const d=document.createElement('div');d.className='tag';d.textContent=r.n+(VOLS[k]!==undefined?' · '+VOLS[k].toFixed(1)+' mL':'');d.addEventListener('click',()=>flyTo(r.c,Math.max(40,Math.cbrt(r.k)*{tumour_step}*5)));r.el=d;tagsEl.appendChild(d);}});
+let fly=null;
+function flyTo(t,dist){{const dir=new THREE.Vector3().subVectors(cam.position,ctr.target).normalize();fly={{t0:performance.now(),from:cam.position.clone(),fromT:ctr.target.clone(),to:new THREE.Vector3(t[0],t[1],t[2]).add(dir.multiplyScalar(dist)),toT:new THREE.Vector3(t[0],t[1],t[2])}};ctr.autoRotate=false;document.getElementById('bRot').classList.remove('on');}}
+function stepFly(){{if(!fly)return;const u=Math.min(1,(performance.now()-fly.t0)/900),e=u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2;cam.position.lerpVectors(fly.from,fly.to,e);ctr.target.lerpVectors(fly.fromT,fly.toT,e);if(u>=1)fly=null;}}
+function placeTags(){{const w=canvas.clientWidth,h=canvas.clientHeight;Object.keys(REG).forEach(k=>{{const r=REG[k];if(!r.el)return;const v=new THREE.Vector3(r.c[0],r.c[1],r.c[2]).project(cam);const vis=v.z<1&&tumOn&&lgOn[k];r.el.style.display=vis?'block':'none';r.el.style.left=((v.x*.5+.5)*w)+'px';r.el.style.top=((-v.y*.5+.5)*h+ (k==2?-26:(k==3?0:26)))+'px';}});}}
+on('bFocus',()=>{{const r=REG[1].k?REG[1]:(REG[3].k?REG[3]:REG[2]);if(r.k)flyTo(r.c,Math.max(60,Math.cbrt(r.k)*{tumour_step}*6));}});
+on('bShot',()=>{{renderer.render(scene,cam);const a=document.createElement('a');a.download='neuroscope_3d.png';a.href=renderer.domElement.toDataURL('image/png');a.click();}});
+
 function resize(){{const w=canvas.clientWidth||window.innerWidth,h=canvas.clientHeight||window.innerHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();}}
 window.addEventListener('resize',resize);
-(function loop(){{resize();ctr.update();renderer.render(scene,cam);requestAnimationFrame(loop);}})();
+(function loop(){{resize();stepFly();ctr.update();placeTags();renderer.render(scene,cam);requestAnimationFrame(loop);}})();
 </script></body></html>"""

@@ -70,10 +70,41 @@ CSS = """
 <style>
 #MainMenu, footer {visibility: hidden;}
 .block-container {padding-top: 1.2rem; max-width: 1280px;}
-div[data-testid="stMetric"] {background: #EADFC9; border: 1px solid #D9CBB0; border-radius: 10px; padding: 10px 14px;}
-div[data-testid="stMetricValue"] {color: #2E6B3F;}
-h1, h2, h3 {color: #1E2A1F;}
+div[data-testid="stMetric"] {background: linear-gradient(145deg, #F0E6D2, #E2D5BA); border: 1px solid #D4C5A5; border-radius: 14px; padding: 12px 16px;
+  box-shadow: 0 1px 0 #fff8 inset, 0 8px 18px -10px #2E6B3F66, 0 2px 4px #0001; transform-style: preserve-3d; transition: transform .18s ease-out, box-shadow .18s ease-out; will-change: transform;}
+div[data-testid="stMetric"]:hover {box-shadow: 0 14px 26px -12px #2E6B3F88, 0 3px 6px #0002;}
+div[data-testid="stMetricValue"] {color: #2E6B3F; transform: translateZ(24px);}
+h1, h2, h3 {color: #1E2A1F; letter-spacing: -0.01em;}
+div[data-testid="stTabs"] button[role="tab"] {border-radius: 10px 10px 0 0; transition: background .15s, transform .15s;}
+div[data-testid="stTabs"] button[role="tab"]:hover {background: #7B2CBF14; transform: translateY(-2px);}
+div[data-testid="stTabs"] button[aria-selected="true"] {color: #7B2CBF; background: #7B2CBF10;}
+.stButton > button, .stDownloadButton > button {border-radius: 12px; transition: transform .15s, box-shadow .15s; box-shadow: 0 6px 14px -8px #2E6B3F99;}
+.stButton > button:hover, .stDownloadButton > button:hover {transform: translateY(-2px) perspective(400px) rotateX(4deg); box-shadow: 0 12px 20px -10px #2E6B3FAA;}
+div[data-testid="stPlotlyChart"], div[data-testid="stDataFrame"], iframe {border-radius: 14px;}
+div[data-testid="stPlotlyChart"] {box-shadow: 0 10px 24px -14px #1E2A1F66; transition: box-shadow .2s;}
+div[data-testid="stAlert"] {border-radius: 12px;}
+section[data-testid="stSidebar"] {box-shadow: 6px 0 20px -14px #1E2A1F55;}
+@media (prefers-reduced-motion: reduce) {* {transition: none !important;}}
 </style>
+"""
+
+TILT_JS = """
+<script>
+try {
+  const d = window.parent.document;
+  if (!d.__nsTilt) {
+    d.__nsTilt = true;
+    d.addEventListener('mousemove', e => {
+      const card = e.target.closest && e.target.closest('div[data-testid="stMetric"]');
+      d.querySelectorAll('div[data-testid="stMetric"]').forEach(c => { if (c !== card) c.style.transform = ''; });
+      if (!card) return;
+      const r = card.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+      card.style.transform = 'perspective(700px) rotateY(' + (x * 14).toFixed(1) + 'deg) rotateX(' + (-y * 14).toFixed(1) + 'deg) translateY(-3px)';
+    }, {passive: true});
+    d.addEventListener('mouseleave', () => d.querySelectorAll('div[data-testid="stMetric"]').forEach(c => c.style.transform = ''));
+  }
+} catch (err) {}
+</script>
 """
 
 
@@ -455,6 +486,7 @@ def ci_txt(d):
 # ================================================================================================
 st.set_page_config(page_title="NeuroScope", layout="wide", initial_sidebar_state="expanded")
 st.markdown(CSS, unsafe_allow_html=True)
+components.html(TILT_JS, height=0)
 
 # ---------------- Sidebar ----------------
 with st.sidebar:
@@ -655,7 +687,8 @@ else:
             @st.cache_data(show_spinner=False)
             def _gl_html(src: str, mod: str, z: Optional[int], mc_: int, tok: float):
                 return brain_html(img[MODALITIES.index(mod)], pred.labels, pred.entropy, brain_step=2, tumour_step=1, height=620,
-                                  title="", subtitle="", slice_z=z, autorotate=True, show_controls=True)
+                                  title="", subtitle="", slice_z=z, autorotate=True, show_controls=True,
+                                  volumes={k: float((pred.labels == k).sum()) * res["voxel_ml"] for k in (1, 2, 3)})
             components.html(_gl_html(st.session_state.source, gl_mod, st.session_state.z if gl_plane else None, pred.mc_samples, res["token"]), height=620, scrolling=False)
 
     with tab_slices:
