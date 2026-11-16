@@ -685,7 +685,7 @@ sub_df = load_csv(os.path.join(results_dir, "subsets.csv"))
 hist_df = load_csv(os.path.join(os.path.dirname(os.path.abspath(ckpt_path)), "history.csv"))
 
 # ---------------- Header ----------------
-_landing = st.session_state.get("result") is None and not st.session_state.get("dicom")
+_landing = st.session_state.get("result") is None and not st.session_state.get("dicom") and not (use_demo or run or dicom_read)
 if _landing and os.path.isdir(ARGS.demo_dir):
     @st.cache_data(show_spinner=False)
     def _hero_html(demo_dir: str) -> str:
