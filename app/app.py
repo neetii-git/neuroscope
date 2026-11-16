@@ -72,11 +72,22 @@ CSS = """
 html, body, [class*="css"], .stApp, button, input, textarea {font-family: 'Inter', 'Segoe UI', system-ui, sans-serif !important;}
 h1, h2, h3, h4, div[data-testid="stMetricValue"] {font-family: 'Space Grotesk', 'Inter', 'Segoe UI', sans-serif !important; letter-spacing: -0.015em;}
 #MainMenu, footer {visibility: hidden;}
-.stApp {background: #0E0F11; color: #ECECEA;}
+html, body {background: #0E0F11;}
+.stApp {background: transparent; color: #ECECEA;}
+header[data-testid="stHeader"], [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stMainBlockContainer"], [data-testid="stBottom"] > div {background: transparent !important;}
+#ns-bg {z-index: 1 !important;}
+.stApp > header {z-index: 3;}
+.block-container, section[data-testid="stSidebar"] {position: relative; z-index: 2;}
+[data-testid="stAppViewContainer"] {position: relative; z-index: 2;}
+@keyframes rise {from {opacity: 0; transform: perspective(900px) translateY(28px) rotateX(8deg);} to {opacity: 1; transform: none;}}
+.block-container > div > div[data-testid="stVerticalBlock"] > div {animation: rise .7s cubic-bezier(.2,.7,.2,1) both;}
+.block-container > div > div[data-testid="stVerticalBlock"] > div:nth-child(2) {animation-delay: .08s;}
+.block-container > div > div[data-testid="stVerticalBlock"] > div:nth-child(3) {animation-delay: .16s;}
+.block-container > div > div[data-testid="stVerticalBlock"] > div:nth-child(4) {animation-delay: .24s;}
 .block-container {padding-top: 1.2rem; max-width: 1280px;}
-section[data-testid="stSidebar"] {background: #141517; box-shadow: 6px 0 24px -14px #000;}
+section[data-testid="stSidebar"] {background: #141517ee; backdrop-filter: blur(10px); box-shadow: 6px 0 24px -14px #000;}
 h1, h2, h3, h4 {color: #F2F2F0;}
-div[data-testid="stMetric"] {background: linear-gradient(150deg, #1D1F23, #141517); border: 1px solid #2C2E33; border-radius: 14px; padding: 12px 16px;
+div[data-testid="stMetric"] {background: linear-gradient(150deg, #1D1F23d9, #141517b3); backdrop-filter: blur(8px); border: 1px solid #2C2E33; border-radius: 14px; padding: 12px 16px;
   box-shadow: 0 1px 0 #ffffff0d inset, 0 12px 22px -14px #000, 0 2px 4px #0006; transform-style: preserve-3d; transition: transform .18s ease-out, box-shadow .18s ease-out, border-color .18s; will-change: transform;}
 div[data-testid="stMetric"]:hover {border-color: #F5C51877; box-shadow: 0 18px 30px -14px #000, 0 0 0 1px #F5C51833;}
 div[data-testid="stMetricValue"] {color: #F5C518; transform: translateZ(24px);}
@@ -84,13 +95,14 @@ div[data-testid="stMetricLabel"] {color: #A3A5AA;}
 div[data-testid="stTabs"] button[role="tab"] {border-radius: 10px 10px 0 0; transition: background .15s, transform .15s; color: #A3A5AA;}
 div[data-testid="stTabs"] button[role="tab"]:hover {background: #F5C5180F; transform: translateY(-2px); color: #ECECEA;}
 div[data-testid="stTabs"] button[aria-selected="true"] {color: #F5C518; background: #F5C51810;}
-.stButton > button, .stDownloadButton > button {background: #1D1F23; color: #ECECEA; border: 1px solid #34363B; border-radius: 12px; transition: transform .15s, box-shadow .15s, border-color .15s; box-shadow: 0 8px 16px -10px #000;}
+.stButton > button, .stDownloadButton > button {background: #1D1F23cc; color: #ECECEA; border: 1px solid #34363B; border-radius: 12px; transition: transform .15s, box-shadow .15s, border-color .15s; box-shadow: 0 8px 16px -10px #000;}
 .stButton > button:hover, .stDownloadButton > button:hover {border-color: #F5C518; color: #F5C518; transform: translateY(-2px) perspective(400px) rotateX(4deg); box-shadow: 0 14px 22px -12px #000;}
 .stButton > button[kind="primary"] {background: #F5C518; color: #0E0F11; border-color: #F5C518; font-weight: 600;}
 .stButton > button[kind="primary"]:hover {background: #FFD84A; color: #0E0F11;}
 div[data-testid="stPlotlyChart"], div[data-testid="stDataFrame"], iframe {border-radius: 14px;}
 div[data-testid="stPlotlyChart"] {box-shadow: 0 14px 28px -16px #000; border: 1px solid #25272B;}
-div[data-testid="stAlert"] {border-radius: 12px;}
+div[data-testid="stAlert"] {border-radius: 12px; backdrop-filter: blur(6px);}
+div[data-testid="stExpander"], div[data-testid="stTable"], div[data-testid="stDataFrame"] {background: #141517a6; backdrop-filter: blur(6px); border-radius: 14px;}
 @media (prefers-reduced-motion: reduce) {* {transition: none !important;}}
 </style>
 """
@@ -114,9 +126,18 @@ try {
 </script>
 """
 
+def _bg_script() -> str:
+    vend = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor")
+    with open(os.path.join(vend, "three.min.js"), encoding="utf-8") as f1, open(os.path.join(vend, "bg.js"), encoding="utf-8") as f2:
+        js = f1.read() + "\n" + f2.read()
+    js = js.replace("</script>", "<\\/script>")
+    return ("<script>try{var d=window.parent.document;if(!d.getElementById('ns-bg-src')){var s=d.createElement('script');s.id='ns-bg-src';"
+            "s.textContent=" + json.dumps(js) + ";d.head.appendChild(s);}}catch(e){}</script>")
+
+
 
 def dark(fig: go.Figure, h: int = 420) -> go.Figure:
-    fig.update_layout(template="plotly_dark", paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG, height=h,
+    fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(23,24,27,0.78)", plot_bgcolor="rgba(0,0,0,0)", height=h,
                       margin=dict(l=10, r=10, t=36, b=10), font=dict(color="#ECECEA", family="Inter, Segoe UI, sans-serif"))
     fig.update_xaxes(gridcolor="#2C2E33", zerolinecolor="#2C2E33"); fig.update_yaxes(gridcolor="#2C2E33", zerolinecolor="#2C2E33")
     return fig
@@ -494,6 +515,7 @@ def ci_txt(d):
 st.set_page_config(page_title="NeuroScope", layout="wide", initial_sidebar_state="expanded")
 st.markdown(CSS, unsafe_allow_html=True)
 components.html(TILT_JS, height=0)
+components.html(_bg_script(), height=0)
 
 # ---------------- Sidebar ----------------
 with st.sidebar:
