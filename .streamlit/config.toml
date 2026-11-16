@@ -11,3 +11,7 @@ gatherUsageStats = false
 
 [server]
 maxUploadSize = 400
+
+[client]
+showErrorDetails = "none"
+toolbarMode = "minimal"

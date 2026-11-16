@@ -567,7 +567,8 @@ with st.sidebar:
     drop = ()
     if not simple and has_demo:
         drop = tuple(st.multiselect("Simulate missing sequences on the example", MODALITIES, default=[],
-                                    format_func=lambda m: MOD_LABEL[m], help="Shows how the model behaves when a scan is unavailable"))
+                                    format_func=lambda m: MOD_LABEL[m], max_selections=3,
+                                    help="Shows how the model behaves when a scan is unavailable. At least one sequence must remain."))
     use_demo = st.button("Load example patient", type="primary", width="stretch", disabled=not has_demo,
                          help="An anonymised case from the BraTS 2020 test split (never used in training)")
     st.caption("Or upload MRI files (.nii / .nii.gz). Any subset of the four sequences works.")
@@ -643,7 +644,12 @@ if use_demo:
     with st.status("Analysing example patient", expanded=True) as status:
         st.write("Loading scans, checking quality, preprocessing")
         st.write(f"Running the model {mc} times with dropout (first CPU run takes 1-2 min; repeats are cached)")
-        st.session_state.result = run_demo_inference(ARGS.demo_dir, mc, ckpt_path, drop)
+        try:
+            st.session_state.result = run_demo_inference(ARGS.demo_dir, mc, ckpt_path, drop)
+        except Exception as err:
+            status.update(label="Analysis could not run", state="error")
+            st.error(f"The analysis could not run: {err}. Keep at least one sequence and try again.")
+            st.stop()
         st.session_state.source = "Example patient, BraTS 2020 test split" + (f" (without {', '.join(m.upper() for m in drop)})" if drop else "")
         status.update(label="Analysis complete", state="complete", expanded=False)
 elif run:
@@ -663,7 +669,11 @@ elif run:
             st.stop()
         with st.status("Analysing scans", expanded=True) as status:
             st.write(f"Checking quality, preprocessing, running the model {mc} times")
-            st.session_state.result = run_case(vols, affine, mc, ckpt_path)
+            try:
+                st.session_state.result = run_case(vols, affine, mc, ckpt_path)
+            except Exception as err:
+                st.error(f"The analysis could not run on these files: {err}. Check that they are brain MRI volumes in NIfTI format.")
+                st.stop()
             st.session_state.source = "Uploaded scans"
             status.update(label="Analysis complete", state="complete", expanded=False)
 
@@ -838,7 +848,7 @@ else:
         st.markdown("**Same patient, fewer scans.** Most models need all four sequences. Run this patient again with some removed and compare.")
         if st.session_state.source and st.session_state.source.startswith("Example patient"):
             cA, cB = st.columns([2, 1])
-            drop2 = cA.multiselect("Remove sequences", MODALITIES, default=["t1ce"], format_func=lambda m: MOD_LABEL[m], key="drop2")
+            drop2 = cA.multiselect("Remove sequences", MODALITIES, default=["t1ce"], format_func=lambda m: MOD_LABEL[m], max_selections=3, key="drop2")
             go_rob = cB.button("Run comparison", type="primary", width="stretch", disabled=(len(drop2) == 0 or len(drop2) == 4))
             if go_rob:
                 with st.spinner("Running the reduced-input case (first time 1-2 min on CPU; cached afterwards)"):
