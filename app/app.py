@@ -31,7 +31,9 @@ from neuroscope.quality.iqa import assess_case  # noqa: E402
 import streamlit.components.v1 as components  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viz3d import brain_html
-from report import analyse, build_figures, report_html  # noqa: E402
+from report import analyse, build_figures, gray_volume, rano_panel, report_html  # noqa: E402
+from clinical import apply_rejections, bidimensional, response_category, simulate_prior
+from clinical import components as find_components  # noqa: E402
 
 try:
     from skimage.measure import marching_cubes
@@ -200,6 +202,66 @@ def run_case(vols, affine, mc: int, ckpt_path: str):
     brain = (np.abs(img).sum(0) > 0)
     return dict(img=img, seg=seg, meta=meta, pred=pred, infer_s=infer_s, present=present, quality=quality,
                 metrics=metrics, affine=affine, brain=brain, voxel_ml=voxel_mm3 / 1000.0, meshes=None, token=time.time())
+
+
+@st.cache_resource(show_spinner=False)
+def run_simulated_prior(demo_dir: str, mc: int, ckpt_path: str):
+    vols, affine = load_demo_case(demo_dir)
+    return run_case(simulate_prior(vols), affine, mc, ckpt_path)
+
+
+def fig_rano(res, meas, mod_index: int):
+    img, pred = res["img"], res["pred"]
+    z = meas["slice"]
+    rgb = compose_rgb(img[mod_index][z], pred.labels[z], pred.entropy[z], True, False, 0.4, 0)
+    W = img.shape[3]
+    fig = go.Figure(go.Image(z=rgb, hoverinfo="skip"))
+    tr = lambda p: (p[0], W - 1 - p[1])
+    for (a, b, col, name, d) in ((meas["p1"], meas["p2"], ACCENT, "Longest diameter", meas["d1_mm"]),
+                                 (meas["q1"], meas["q2"], "#FFFFFF", "Perpendicular", meas["d2_mm"])):
+        (x0, y0), (x1, y1) = tr(a), tr(b)
+        fig.add_trace(go.Scatter(x=[x0, x1], y=[y0, y1], mode="lines+markers", line=dict(color=col, width=3), marker=dict(size=7, color=col),
+                                 name=f"{name} {d:.1f} mm", hovertemplate=f"{name}: {d:.1f} mm<extra></extra>"))
+    cx, cy = tr(((meas["p1"][0] + meas["p2"][0]) / 2, (meas["p1"][1] + meas["p2"][1]) / 2))
+    h = max(35, meas["d1_mm"] * 1.0)
+    fig.update_layout(xaxis=dict(visible=False, range=[cx - h, cx + h]), yaxis=dict(visible=False, range=[cy + h, cy - h], scaleanchor="x"),
+                      legend=dict(orientation="h", y=-0.04), dragmode="pan")
+    return dark(fig, 480)
+
+
+def build_followup(cur, other, other_is_earlier: bool, simulated: bool):
+    """Compare two analysed examinations. Returns a dict used by the app and the report."""
+    earlier, later = (other, cur) if other_is_earlier else (cur, other)
+    def meas(r):
+        return bidimensional(r["pred"].labels, r["affine"], "ET")
+    me, ml_ = meas(earlier), meas(later)
+    ve, vl = earlier["pred"].volumes_ml, later["pred"].volumes_ml
+    def ed(r): return float(((r["pred"].labels == 2).sum()) * r["voxel_ml"])
+    rows = []
+    for name, a, b in (("Whole tumour (mL)", ve["WT_ml"], vl["WT_ml"]), ("Tumour core (mL)", ve["TC_ml"], vl["TC_ml"]),
+                       ("Enhancing tumour (mL)", ve["ET_ml"], vl["ET_ml"]), ("Edema (mL)", ed(earlier), ed(later))):
+        ch = (b - a) / a * 100 if a > 0.05 else float("nan")
+        rows.append({"name": name, "earlier": f"{a:.1f}", "later": f"{b:.1f}", "change": f"{b - a:+.1f} ({ch:+.0f}%)" if ch == ch else f"{b - a:+.1f}", "a": a, "b": b})
+    pa, pb = (me or {}).get("product_mm2"), (ml_ or {}).get("product_mm2")
+    if pa or pb:
+        ch = (pb - pa) / pa * 100 if (pa and pb) else float("nan")
+        rows.append({"name": "Product of perpendicular diameters (mm2)", "earlier": f"{pa:.0f}" if pa else "-", "later": f"{pb:.0f}" if pb else "-",
+                     "change": f"{ch:+.0f}%" if ch == ch else "-", "a": pa or 0, "b": pb or 0})
+    cat, detail = response_category(me, ml_, ve["ET_ml"], vl["ET_ml"])
+    dv = vl["WT_ml"] - ve["WT_ml"]
+    trend = "smaller" if dv < -0.05 * max(ve["WT_ml"], 1e-6) else ("larger" if dv > 0.05 * max(ve["WT_ml"], 1e-6) else "about the same size")
+    panels = []
+    for r, m, t in ((earlier, me, "Earlier"), (later, ml_, "Later")):
+        if m:
+            bi = MODALITIES.index("flair") if "flair" in r["present"] else MODALITIES.index(r["present"][0])
+            g = gray_volume(r["img"], bi)
+            panels.append((rano_panel(g[m["slice"]], r["pred"].labels[m["slice"]], m), f"{t}: {m['d1_mm']:.0f} x {m['d2_mm']:.0f} mm, slice {m['slice']}"))
+    return {"rows": rows, "category": cat, "category_detail": detail, "earlier": earlier, "later": later, "m_earlier": me, "m_later": ml_,
+            "other_label": "earlier examination" if other_is_earlier else "later examination", "panels": panels,
+            "note": "The earlier examination is SIMULATED for demonstration: the example scan with the tumour region digitally shrunk. "
+                    "BraTS 2020 has one time point per patient." if simulated else "",
+            "patient_text": f"Compared with the earlier scan, the abnormal area is {trend} ({ve['WT_ml']:.0f} mL then, {vl['WT_ml']:.0f} mL now)."
+                            + (" The earlier scan in this example is simulated for demonstration." if simulated else "")}
 
 
 def read_upload(upload):
@@ -652,6 +714,23 @@ elif run:
             status.update(label="Analysis complete", state="complete", expanded=False)
 
 res = st.session_state.result
+if res is not None:
+    _tok = str(res["token"])
+    if res.get("_comps") is None:
+        res["_comps"] = find_components(res["pred"].labels, res["pred"].entropy, res["voxel_ml"])
+    _rej = [c["id"] for c in res["_comps"] if st.session_state.get(f"rej_{_tok}_{c['id']}")]
+    if _rej:
+        _cache = st.session_state.setdefault("_corr", {})
+        _key = (_tok, tuple(sorted(_rej)))
+        if _key not in _cache:
+            _r2 = apply_rejections(res, _rej)
+            if _r2["seg"] is not None:
+                _r2["metrics"] = region_metrics(_r2["pred"].regions, labels_to_regions(_r2["seg"]), with_hd95=False)
+            _cache.clear()
+            _cache[_key] = _r2
+        base_res, res = res, _cache[_key]
+    else:
+        base_res = res
 
 # ---------------- Landing ----------------
 if res is None:
@@ -720,7 +799,14 @@ else:
     if missing:
         st.warning(f"Running without {', '.join(m.upper() for m in missing)}. Accuracy for the affected regions is lower; see the subset chart under Performance.")
 
-    tab_gl, tab_slices, tab_3d, tab_unc, tab_rob, tab_perf, tab_report = st.tabs(["3D brain", "Slice viewer", "3D surfaces", "Uncertainty", "Missing sequences", "Performance", "Report"])
+    _tab_names = ["3D brain", "Slice viewer", "Measure and review", "Follow-up", "3D surfaces", "Uncertainty", "Missing sequences", "Performance", "Report"]
+    try:   # keep the open tab across reruns (Streamlit >= 1.6x); older versions fall back to plain tabs
+        _tabs = st.tabs(_tab_names, key="main_tabs", on_change="rerun")
+    except TypeError:
+        _tabs = st.tabs(_tab_names)
+    tab_gl, tab_slices, tab_meas, tab_fu, tab_3d, tab_unc, tab_rob, tab_perf, tab_report = _tabs
+    if res.get("rejected"):
+        st.info(f"Reviewer correction active: {len(res['rejected'])} region(s) rejected, {res['removed_ml']:.2f} mL removed. All tabs and the report use the corrected segmentation.")
 
     tum_z = np.where(pred.regions[0].reshape(pred.regions.shape[1], -1).sum(1) > 0)[0]
     default_z = int(tum_z[len(tum_z) // 2]) if tum_z.size else img.shape[1] // 2
@@ -769,6 +855,110 @@ else:
             gt = take_slice(res["seg"], axis, i) if show_gt else None
             st.plotly_chart(slice_figure(base, labs, ent, show_seg, show_unc, seg_alpha, unc_alpha, gt, f"{plane} slice {i} - {MOD_LABEL[base_mod]}"),
                             width="stretch", config={"scrollZoom": True, "displaylogo": False})
+
+    with tab_meas:
+        meas = bidimensional(pred.labels, res["affine"], "ET") or bidimensional(pred.labels, res["affine"], "TC")
+        m1, m2 = st.columns([1.5, 1])
+        bi = MODALITIES.index("flair") if "flair" in present else MODALITIES.index(present[0])
+        with m1:
+            if meas:
+                st.plotly_chart(fig_rano(res, meas, bi), width="stretch", key="rano_fig")
+            else:
+                st.info("No tumour to measure.")
+        with m2:
+            st.markdown("#### Bidimensional measurement")
+            if meas:
+                tgt = "enhancing tumour" if meas["target"] == "ET" else "tumour core (no enhancing tumour found)"
+                mc1, mc2 = st.columns(2)
+                mc1.metric("Longest diameter", f"{meas['d1_mm']:.1f} mm")
+                mc2.metric("Perpendicular", f"{meas['d2_mm']:.1f} mm")
+                mc1.metric("Product", f"{meas['product_mm2']:.0f} mm²")
+                mc2.metric("Measurable", "Yes" if meas["measurable"] else "No", help="RANO: both diameters at least 10 mm")
+                st.caption(f"Measured automatically on the {tgt}, axial slice {meas['slice']}: the slice where the longest diameter times the longest "
+                           "perpendicular diameter is largest. This is the measurement radiologists use in the RANO response criteria, which normally "
+                           "takes a manual measurement on screen.")
+        st.markdown("#### Review detected regions")
+        comps = base_res.get("_comps") or []
+        if not comps:
+            st.caption("No regions detected.")
+        else:
+            st.caption("Each separate region the model predicted. Small isolated regions are a common source of false positives. "
+                       "Tick Reject to remove a region; volumes, 3D views, measurements and the report update.")
+            hdr = st.columns([0.7, 0.6, 1, 1.4, 1.1, 2.2])
+            for c_, t_ in zip(hdr, ["Reject", "#", "Volume", "Slices", "Uncertainty", "Composition (mL)"]):
+                c_.markdown(f"<span style='color:#A3A5AA;font-size:13px'>{t_}</span>", unsafe_allow_html=True)
+            for c in comps[:12]:
+                row = st.columns([0.7, 0.6, 1, 1.4, 1.1, 2.2])
+                row[0].checkbox("Reject", key=f"rej_{_tok}_{c['id']}", label_visibility="collapsed", disabled=(c["rank"] == 1 and len(comps) == 1))
+                row[1].write(f"{c['rank']}" + (" (main)" if c["rank"] == 1 else ""))
+                row[2].write(f"{c['ml']:.2f} mL")
+                row[3].write(f"{c['slices'][0]} to {c['slices'][1]}")
+                row[4].write(f"{c['mean_u']:.2f}")
+                comp = c["composition"]
+                row[5].write(f"core {comp[1]:.2f}, enh {comp[3]:.2f}, edema {comp[2]:.2f}")
+            if len(comps) > 12:
+                st.caption(f"{len(comps) - 12} further regions not shown.")
+            if st.button("Restore all regions"):
+                for c in comps:
+                    st.session_state[f"rej_{_tok}_{c['id']}"] = False
+                st.rerun()
+
+    with tab_fu:
+        st.markdown("#### Compare with another examination of the same patient")
+        st.caption("Analyses a second scan with the same model and compares volumes and the bidimensional measurement. "
+                   "The response category is an imaging-only approximation of RANO.")
+        is_demo = str(st.session_state.source or "").startswith("Example patient")
+        opts = (["Simulated earlier scan (demonstration)"] if is_demo else []) + ["Upload another examination"]
+        how = st.radio("Second examination", opts, horizontal=True, key="fu_how")
+        fu = st.session_state.get("followup")
+        if fu and fu.get("base") != _tok:
+            fu = st.session_state.followup = None
+        if how.startswith("Simulated"):
+            st.caption("BraTS 2020 has one scan per patient. For demonstration, the earlier scan is synthesised from the example patient by digitally "
+                       "shrinking the tumour region by about 22% in each direction; the model then analyses it like any other scan. Clearly labelled as simulated everywhere.")
+            if st.button("Analyse simulated earlier scan", type="primary"):
+                with st.spinner("Creating and analysing the simulated earlier scan (first time 1-2 min on CPU)"):
+                    other = run_simulated_prior(ARGS.demo_dir, mc, ckpt_path)
+                st.session_state.followup = fu = {"base": _tok, "other": other, "earlier": True, "simulated": True}
+        else:
+            fcols = st.columns(4)
+            fu_up = {m: fcols[i].file_uploader(MOD_LABEL[m], type=["nii", "gz"], key=f"fu_{m}") for i, m in enumerate(MODALITIES)}
+            when = st.radio("This examination was taken", ["Before the current one", "After the current one"], horizontal=True, key="fu_when")
+            if st.button("Analyse and compare", type="primary"):
+                v2, aff2 = {}, np.eye(4)
+                for m in MODALITIES:
+                    r_ = read_upload(fu_up[m])
+                    if r_ is not None:
+                        v2[m], aff2, _ = r_
+                if not v2:
+                    st.warning("Upload at least one sequence of the other examination.")
+                else:
+                    try:
+                        with st.spinner("Analysing the other examination"):
+                            other = run_case(v2, aff2, mc, ckpt_path)
+                        st.session_state.followup = fu = {"base": _tok, "other": other, "earlier": when.startswith("Before"), "simulated": False}
+                    except Exception as err:
+                        st.error(f"The other examination could not be analysed: {err}.")
+        if fu:
+            cmp_ = build_followup(res, fu["other"], fu["earlier"], fu["simulated"])
+            st.session_state.followup_cmp = cmp_
+            if cmp_["note"]:
+                st.warning(cmp_["note"])
+            st.markdown(f"**{cmp_['category']}.** {cmp_['category_detail']}")
+            st.table(pd.DataFrame([{"Measure": r_["name"], "Earlier": r_["earlier"], "Later": r_["later"], "Change": r_["change"]} for r_ in cmp_["rows"]]).set_index("Measure"))
+            fc = st.columns(2)
+            for col_, (b64, cap) in zip(fc, cmp_["panels"]):
+                col_.image("data:image/png;base64," + b64, caption=cap, width="stretch")
+            fig_c = go.Figure()
+            names = [r_["name"].replace(" (mL)", "") for r_ in cmp_["rows"][:4]]
+            fig_c.add_trace(go.Bar(x=names, y=[r_["a"] for r_ in cmp_["rows"][:4]], name="Earlier", marker_color="#6B6E74"))
+            fig_c.add_trace(go.Bar(x=names, y=[r_["b"] for r_ in cmp_["rows"][:4]], name="Later", marker_color=ACCENT))
+            fig_c.update_layout(barmode="group", yaxis_title="mL", legend=dict(orientation="h", y=1.1))
+            st.plotly_chart(dark(fig_c, 340), width="stretch", key="fu_bars")
+            st.caption("Full RANO assessment also uses non-enhancing (FLAIR) disease, corticosteroid dose and clinical status. No image registration is performed; "
+                       "measurements are compared, not voxels.")
+        else:
+            st.session_state.followup_cmp = None
 
     with tab_3d:
         a, b = st.columns([1, 3])
@@ -912,7 +1102,7 @@ human-in-the-loop review, not a diagnostic device.
         if "_report_imgs" not in res:
             res["_report_imgs"] = report_images(res)
         rhtml = report_html(analysis, res, flagged, thr, model_info, str(st.session_state.get("source", "case")), res["_report_imgs"],
-                            pred.mc_samples, DEVICE, res["infer_s"])
+                            pred.mc_samples, DEVICE, res["infer_s"], followup=st.session_state.get("followup_cmp"))
         d0, d1, d2, d3 = st.columns(4)
         d0.download_button("Report (.html, print to PDF)", rhtml, file_name="neuroscope_report.html", mime="text/html", width="stretch", type="primary")
         d1.download_button("Report (.md)", md, file_name="neuroscope_report.md", width="stretch")

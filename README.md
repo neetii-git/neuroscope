@@ -120,7 +120,13 @@ four sequences. The result page has five tabs:
 - **Uncertainty** - per-slice tumour volume and uncertainty profile, nested-region volumes, and a scatter of the
   current case against every held-out test patient (uncertainty vs Dice) with the validated review threshold.
 - **Performance** - test Dice for all 15 sequence combinations, training curve, risk-coverage curve, model card.
-- **Report** - a printable clinical-style report (HTML, print to PDF): status, tumour location and volumes, reliability gauge against the validated threshold, a findings-and-faults list (uncertainty above threshold, missing-sequence impact, input-quality issues, most uncertain slices and region, border uncertainty, isolated fragments, disagreement with the expert outline), key slice images and an uncertainty-per-slice profile. Also Markdown, JSON and the NIfTI mask.
+- **Measure and review** - automatic bidimensional measurement of the enhancing tumour (longest diameter and longest perpendicular diameter on the
+  axial slice where their product is largest, as used in the RANO response criteria), drawn on the image; a list of every separate predicted region
+  with volume, slice range and uncertainty, where a reviewer can reject false positives. All tabs and the report then use the corrected segmentation.
+- **Follow-up** - analyse a second examination of the same patient and compare volumes and the bidimensional product, with an imaging-only
+  approximation of the RANO response category. For the example patient a clearly labelled simulated earlier scan is available (tumour region
+  digitally shrunk), because BraTS 2020 has one time point per patient.
+- **Report** - a printable clinical-style report (HTML, print to PDF): status, tumour location and volumes, reliability gauge against the validated threshold, a findings-and-faults list (uncertainty above threshold, missing-sequence impact, input-quality issues, most uncertain slices and region, border uncertainty, isolated fragments, disagreement with the expert outline), key slice images and an uncertainty-per-slice profile, the bidimensional measurement, the follow-up comparison when available, and a plain-language page for the patient. Also Markdown, JSON and the NIfTI mask.
 
 In Detailed view the example patient can be re-run with chosen sequences removed, to show the missing-modality behaviour.
 The landing page shows the validated test-set numbers, read live from `runs/base/results/summary.json`.

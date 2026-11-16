@@ -8,6 +8,8 @@ from typing import Dict, List, Optional
 import numpy as np
 from scipy import ndimage as ndi
 
+from clinical import bidimensional  # noqa: E402
+
 REGION_NAMES = {1: "Necrotic / non-enhancing core", 2: "Edema", 3: "Enhancing tumour"}
 LOG2 = float(np.log(2.0))
 
@@ -174,6 +176,15 @@ def analyse(res: Dict, thr: Optional[Dict], flagged: bool, sub_df, test_df, moda
             add("info", "Disagreement with reference segmentation",
                 f"Under-segmented {fn:.1f} mL, over-segmented {fp:.1f} mL. Lowest per-slice whole-tumour Dice: "
                 + ", ".join(f"{i} ({d:.2f})" for i, d in worst) + ".", f"Slices {', '.join(str(i) for i, _ in worst)}")
+    # RANO-style bidimensional measurement
+    out["rano"] = bidimensional(lab, res["affine"], "ET") or bidimensional(lab, res["affine"], "TC")
+    r = out["rano"]
+    if r and not r["measurable"]:
+        add("info", "Enhancing disease below measurable size", f"Bidimensional measurement {r['d1_mm']:.0f} x {r['d2_mm']:.0f} mm; RANO requires at least 10 mm in both "
+            "dimensions for measurable disease.", f"Slice {r['slice']}")
+    if res.get("rejected"):
+        add("info", "Clinician correction applied", f"{len(res['rejected'])} predicted region{'s' if len(res['rejected']) > 1 else ''} rejected by the reviewer "
+            f"({res.get('removed_ml', 0):.2f} mL removed). Volumes and measurements reflect the corrected segmentation.", "Review tab")
     order = {"critical": 0, "warn": 1, "info": 2}
     out["findings"].sort(key=lambda f: order[f["level"]])
     return out
@@ -225,6 +236,35 @@ def _panel(gray, lab, ent, mode, plane, gt=None, box=None):
     return _orient(np.clip(rgb, 0, 255), plane)
 
 
+def rano_panel(img2d_gray: np.ndarray, labels2d: np.ndarray, meas: Dict, box=None, scale: int = 3) -> str:
+    """Axial slice with the two perpendicular diameters drawn, cropped around the measured lesion."""
+    from PIL import Image, ImageDraw
+    rgb = _panel(img2d_gray, labels2d, np.zeros_like(img2d_gray, dtype=np.float32), "outline", "axial")
+    W = img2d_gray.shape[1]
+    im = Image.fromarray(rgb.astype(np.uint8)).resize((rgb.shape[1] * scale, rgb.shape[0] * scale), Image.LANCZOS)
+    dr = ImageDraw.Draw(im)
+    tr = lambda p: (p[0] * scale + scale / 2, (W - 1 - p[1]) * scale + scale / 2)
+    for a, b, col in ((meas["p1"], meas["p2"], (245, 197, 24)), (meas["q1"], meas["q2"], (255, 255, 255))):
+        dr.line([tr(a), tr(b)], fill=col, width=max(2, scale))
+        for p in (a, b):
+            x, y = tr(p); dr.ellipse([x - 4, y - 4, x + 4, y + 4], fill=col)
+    cx = (meas["p1"][0] + meas["p2"][0]) / 2; cy = W - 1 - (meas["p1"][1] + meas["p2"][1]) / 2
+    half = max(30, meas["d1_mm"] * 0.9)
+    x0, y0 = max(0, (cx - half) * scale), max(0, (cy - half) * scale)
+    x1, y1 = min(im.width, (cx + half) * scale), min(im.height, (cy + half) * scale)
+    im = im.crop((int(x0), int(y0), int(x1), int(y1)))
+    import base64, io
+    buf = io.BytesIO(); im.save(buf, "PNG", optimize=True)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def gray_volume(img: np.ndarray, base_index: int) -> np.ndarray:
+    vol = img[base_index]
+    nz = vol[vol != 0]
+    lo, hi = (np.percentile(nz, [1, 99.5]) if nz.size else (0.0, 1.0))
+    return np.clip((vol - lo) / (hi - lo + 1e-6), 0, 1) * 255
+
+
 def build_figures(img: np.ndarray, labels: np.ndarray, entropy: np.ndarray, seg: Optional[np.ndarray], base_index: int,
                   base_name: str, analysis: Dict) -> List[Dict]:
     vol = img[base_index]
@@ -243,6 +283,13 @@ def build_figures(img: np.ndarray, labels: np.ndarray, entropy: np.ndarray, seg:
              ("sagittal", gray[:, cx, :], labels[:, cx, :], entropy[:, cx, :], None if seg is None else seg[:, cx, :], f"Sagittal, position {cx}")]
     figs.append({"cols": 3, "panels": [(_png(_panel(g, l, e, "fill", pl)), t) for pl, g, l, e, _, t in views],
                  "caption": "Orthogonal views through the centre of the segmented tumour, with predicted labels overlaid."})
+    r = analysis.get("rano")
+    if r:
+        z = r["slice"]
+        figs.append({"cols": 2, "panels": [(rano_panel(gray[z], labels[z], r), f"Axial slice {z}"),
+                                           (_png(_panel(gray[z], labels[z], entropy[z], "fill", "axial"), 2), "Whole slice, predicted labels")],
+                     "caption": f"Bidimensional measurement of the {'enhancing tumour' if r['target'] == 'ET' else 'tumour core'}: longest diameter "
+                                f"{r['d1_mm']:.1f} mm (yellow) and longest perpendicular diameter {r['d2_mm']:.1f} mm (white)."})
     # crop box around tumour for close-ups
     cc, n = ndi.label(wt)
     main = np.argwhere(cc == (np.argmax(np.bincount(cc.ravel())[1:]) + 1)) if n > 1 else idx
@@ -300,6 +347,9 @@ td{padding:5px 6px;border-bottom:1px solid #e3e3e3;vertical-align:top} .n{text-a
 .cap{font-size:11px;color:#444;margin:4px 0 0}
 .prof{display:flex;align-items:flex-end;gap:1px;height:56px;border-bottom:1px solid #111;margin-top:6px} .prof i{flex:1;background:#9a9a9a} .prof i.h{background:#111}
 .sign{display:grid;grid-template-columns:2fr 1.4fr 1fr;gap:24px;margin-top:30px} .sign div{border-top:1px solid #111;padding-top:4px;font-size:11px;color:#444}
+.pp .big{font-size:15px;line-height:1.6;margin:14px 0} .pp p{font-size:14px;line-height:1.65} .pp ol{font-size:14px}
+.page+.page{margin-top:24px}
+@media print{.page+.page{break-before:page;margin-top:0}}
 .ft{margin-top:22px;font-size:10.5px;color:#555;line-height:1.5;border-top:1px solid #ccc;padding-top:8px}
 @media print{body{background:#fff}.page{box-shadow:none;margin:0;max-width:none;padding:14mm 16mm}table,.figs,ol,.cap{break-inside:avoid}}
 """
@@ -312,7 +362,7 @@ def _fnum(v, d=2):
 
 
 def report_html(a: Dict, res: Dict, flagged: bool, thr: Optional[Dict], model_info: Dict, case_label: str, images: Dict[str, str],
-                mc: int, device: str, infer_s: float) -> str:
+                mc: int, device: str, infer_s: float, followup: Optional[Dict] = None) -> str:
     import hashlib
     e = html.escape
     now = time.localtime()
@@ -352,6 +402,15 @@ def report_html(a: Dict, res: Dict, flagged: bool, thr: Optional[Dict], model_in
     for k in (3, 1, 2):
         mrows += f"<tr><td>{e(R[k]['name'])}</td><td class='n'>{R[k]['ml']:.2f}</td><td class='n'>{_fnum(R[k]['mean_u'])}</td></tr>"
     mrows += f"<tr><td><b>Whole tumour</b></td><td class='n'><b>{a['wt_ml']:.2f}</b></td><td class='n'></td></tr>"
+    rano = a.get("rano")
+    rtab = ""
+    if rano:
+        tgt = "enhancing tumour" if rano["target"] == "ET" else "tumour core (no enhancing tumour)"
+        rtab = (f"<table><tr><th>Bidimensional measurement ({tgt}, axial slice {rano['slice']})</th><th class='n'>Value</th></tr>"
+                f"<tr><td>Longest diameter</td><td class='n'>{rano['d1_mm']:.1f} mm</td></tr>"
+                f"<tr><td>Longest perpendicular diameter</td><td class='n'>{rano['d2_mm']:.1f} mm</td></tr>"
+                f"<tr><td>Product of perpendicular diameters</td><td class='n'>{rano['product_mm2']:.0f} mm&sup2;</td></tr>"
+                f"<tr><td>Measurable disease (both diameters at least 10 mm)</td><td class='n'>{'Yes' if rano['measurable'] else 'No'}</td></tr></table>")
 
     # reliability
     rel = "<table><tr><th>Measure</th><th class='n'>Value</th></tr>"
@@ -383,6 +442,11 @@ def report_html(a: Dict, res: Dict, flagged: bool, thr: Optional[Dict], model_in
         imp.append(f"Enhancing component {R[3]['ml']:.1f} mL with {R[1]['ml']:.1f} mL necrotic or non-enhancing core and {R[2]['ml']:.1f} mL surrounding edema.")
     else:
         imp.append("No tumour segmented.")
+    if rano:
+        imp.append(f"Bidimensional measurement {rano['d1_mm']:.0f} x {rano['d2_mm']:.0f} mm (product {rano['product_mm2']:.0f} mm&sup2;)"
+                   + ("." if rano["measurable"] else ", below the RANO threshold for measurable disease."))
+    if followup:
+        imp.append(f"Compared with the {followup['other_label']}: {e(followup['category'])}. {e(followup['category_detail'])}")
     if th:
         imp.append(("Model uncertainty is above the validated review threshold. The segmentation should be reviewed and corrected before use."
                     if flagged else "Model uncertainty is within the validated threshold. Clinician confirmation is still required."))
@@ -408,24 +472,55 @@ def report_html(a: Dict, res: Dict, flagged: bool, thr: Optional[Dict], model_in
         figs += ("<div class='prof'>" + "".join(f"<i class='{'h' if i in hot else ''}' style='height:{100*v/mx:.0f}%'></i>" for i, v in enumerate(pr))
                  + f"</div><p class='cap'><b>Fig. {fno}.</b> Mean uncertainty inside the predicted tumour for each axial slice (inferior to superior). Dark bars: three highest.</p>")
 
+    fu = ""
+    if followup:
+        rows = "".join(f"<tr><td>{e(r['name'])}</td><td class='n'>{r['earlier']}</td><td class='n'>{r['later']}</td><td class='n'>{r['change']}</td></tr>" for r in followup["rows"])
+        fu = (f"<h3>Comparison with prior examination</h3>"
+              + (f"<p class='cap'><b>Note.</b> {e(followup['note'])}</p>" if followup.get("note") else "")
+              + f"<table><tr><th>Measure</th><th class='n'>Earlier</th><th class='n'>Later</th><th class='n'>Change</th></tr>{rows}</table>"
+              + f"<p><b>Response assessment (imaging only):</b> {e(followup['category'])}. {e(followup['category_detail'])} "
+              "Full RANO assessment also requires non-enhancing disease, corticosteroid dose and clinical status.</p>")
+        if followup.get("panels"):
+            fu += ("<div class='figs' style='grid-template-columns:1fr 1fr'>" + "".join(
+                f"<figure><img src='data:image/png;base64,{b}'><figcaption>{e(t)}</figcaption></figure>" for b, t in followup["panels"]) + "</div>"
+                "<p class='cap'>Bidimensional measurement on each examination (yellow: longest diameter, white: perpendicular).</p>")
+    # patient page
+    dia = (6 * a["wt_ml"] / np.pi) ** (1 / 3) if a["wt_ml"] > 0 else 0
+    side_txt = {"right hemisphere": "the right side of the brain", "left hemisphere": "the left side of the brain",
+                "crosses the midline": "both sides of the brain"}.get(loc.get("side"), "the brain")
+    pp = f"""<div class="pp"><div class="hd"><div><div class="org">NeuroScope</div><div class="ttl">Summary for the patient</div></div>
+<div class="rid">Report ID {rid}</div></div>
+<p class="big">This page explains, in plain language, what the computer program found on the MRI scan. It is not a diagnosis. Your doctor will explain what it means for you.</p>
+<h3>What was looked at</h3><p>{len(mods)} MRI image{'s' if len(mods) != 1 else ''} of the head ({', '.join(mods)}). Each type of MRI image shows tissue differently.
+The program outlined areas that look different from healthy brain tissue.</p>
+<h3>What the program found</h3>""" + (f"""<p>An abnormal area in {side_txt}. Its total size is about <b>{a['wt_ml']:.0f} millilitres</b>, roughly the volume of a ball
+<b>{dia:.1f} cm</b> across. This includes swelling around it (called edema), which is usually the largest part.</p>
+<p>The central part of the abnormal area, which doctors look at most closely, measures about <b>{R[1]['ml'] + R[3]['ml']:.0f} millilitres</b>.</p>""" if a["wt_ml"] > 0 else
+"<p>The program did not find an abnormal area.</p>") + f"""
+<h3>How sure is the program</h3><p>{'The program was <b>less sure than usual</b> about this scan, so a specialist needs to check the outline carefully before it is used.'
+if flagged else 'The program was <b>about as sure as it usually is</b> on scans it handles well. A specialist still needs to check the result.'}</p>
+""" + (f"<h3>Change since the earlier scan</h3><p>{e(followup['patient_text'])}</p>" if followup else "") + """
+<h3>Questions you may want to ask your doctor</h3><ol><li>What do these findings mean for me?</li><li>Do I need more tests or scans?</li>
+<li>What are my treatment options, and what are their benefits and risks?</li><li>When should the next scan be done?</li></ol>
+<div class="ft">This summary was produced automatically by a research program and has not been reviewed unless signed on the main report. It does not replace advice from your doctor.</div></div>"""
     status = ("REVIEW REQUIRED", "Uncertainty above validated threshold") if flagged else ("WITHIN THRESHOLD", "Clinician confirmation required")
     return f"""<!doctype html><html><head><meta charset="utf-8"><title>{rid}</title>
 <style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@700&display=swap');{_CSS}</style></head><body><div class="page">
 <div class="hd"><div><div class="org">NeuroScope</div><div class="ttl">Automated MRI brain tumour segmentation report</div></div>
-<div class="rid">Report ID {rid}<br>{time.strftime('%d %b %Y, %H:%M', now)}<br>Preliminary, automated</div></div>
+<div class="rid">Report ID {rid}<br>{time.strftime('%d %b %Y, %H:%M', now)}<br>{'Automated, edited by reviewer' if res.get('rejected') else 'Preliminary, automated'}</div></div>
 <div class="kv"><div><b>Case</b>{e(case_label)}</div><div><b>Examination</b>MRI brain, multi-parametric</div><div><b>Sequences used</b>{', '.join(mods)}</div>
 <div><b>Sequences missing</b>{', '.join(miss) or 'None'}</div><div><b>Input quality</b>{e(q.status)} ({q.score:.2f})</div><div><b>Processing</b>{mc} MC samples, {e(device.upper())}, {infer_s:.1f} s</div></div>
 <div class="status"><b>{status[0]}</b><span>{status[1]}</span></div>
 <h3>1. Technique</h3><p>Automated slice-wise segmentation with a 2D U-Net (7.8 M parameters) trained on BraTS 2020 with modality dropout. Labels: necrotic or non-enhancing
 core, peritumoral edema, enhancing tumour. Voxel-wise uncertainty from Monte Carlo dropout ({mc} forward passes); case-level review threshold selected on the validation set and frozen.</p>
 <h3>2. Findings</h3>{''.join(fnd)}
-<h3>3. Measurements</h3><table><tr><th>Region</th><th class='n'>Volume (mL)</th><th class='n'>Mean uncertainty (0 to 1)</th></tr>{mrows}</table>
+<h3>3. Measurements</h3><table><tr><th>Region</th><th class='n'>Volume (mL)</th><th class='n'>Mean uncertainty (0 to 1)</th></tr>{mrows}</table>{rtab}
 <h3>4. Reliability</h3>{rel}
 <h3>5. Quality control</h3><table><tr><th style="width:70px">Severity</th><th style="width:170px">Check</th><th style="width:110px">Location</th><th>Detail</th></tr>{qrows}</table>
 <p class="cap">Input checks: {len(q.checks) - len(bad)} of {len(q.checks)} passed.</p>
-<h3>6. Figures</h3>{figs}
+<h3>6. Figures</h3>{figs}{fu}
 <h3>7. Impression</h3><ol>{''.join(f'<li>{x}</li>' for x in imp)}</ol>
 <div class="sign"><div>Reviewed by</div><div>Signature</div><div>Date</div></div>
 <div class="ft">Generated by NeuroScope, a research prototype. Not a medical device and not for diagnostic use. Trained on adult glioma (BraTS 2020); not validated on other tumour types,
 scanners, paediatric or post-operative imaging. Uncertainty reflects model disagreement and does not guarantee correctness. Report {rid}.</div>
-</div></body></html>"""
+</div><div class="page">{pp}</div></body></html>"""
