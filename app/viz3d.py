@@ -109,7 +109,6 @@ def brain_html(vol: np.ndarray, labels: Optional[np.ndarray] = None, entropy: Op
  <button id="bUnc">Uncertainty</button>
  <button id="bSlice" class="{'on' if slice_img else ''}" style="display:{'inline-block' if slice_img else 'none'}">Slice</button>
  <button id="bRot" class="{'on' if autorotate else ''}">Rotate</button>
- <button id="bScan" class="on">Scan</button>
  <button id="bFocus">Focus tumour</button>
  <button id="bReset">Reset</button>
  <button id="bShot">Screenshot</button>
@@ -162,12 +161,6 @@ mkGroup([2],0.22,{tumour_step}*2.2,2,true);
 mkGroup([3],0.6,{tumour_step}*2.4,3,false);
 mkGroup([1],1.0,{tumour_step}*2.6,4,false);
 
-// scanning sweep: a thin yellow plane travelling through the head, like a scanner pass
-const scanMat=new THREE.MeshBasicMaterial({{color:0xF5C518,transparent:true,opacity:0.10,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending}});
-const scanPl=new THREE.Mesh(new THREE.PlaneGeometry(W*0.8,H*0.8),scanMat);scanPl.renderOrder=1;scene.add(scanPl);
-const scanEdge=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(W*0.8,H*0.8)),new THREE.LineBasicMaterial({{color:0xF5C518,transparent:true,opacity:0.55}}));scanPl.add(scanEdge);
-let scanOn=true;
-function stepScan(){{if(!scanOn){{scanPl.visible=false;return;}}scanPl.visible=true;const u=(performance.now()%7000)/7000,k=u<.5?u*2:2-u*2;scanPl.position.set(cx,cy,D*0.08+k*D*0.84);scanMat.opacity=0.03+0.05*Math.sin(u*Math.PI);}}
 // slice plane
 let plane=null;
 const sliceSrc="{slice_img}";
@@ -199,11 +192,10 @@ let fly=null;
 function flyTo(t,dist){{const dir=new THREE.Vector3().subVectors(cam.position,ctr.target).normalize();fly={{t0:performance.now(),from:cam.position.clone(),fromT:ctr.target.clone(),to:new THREE.Vector3(t[0],t[1],t[2]).add(dir.multiplyScalar(dist)),toT:new THREE.Vector3(t[0],t[1],t[2])}};ctr.autoRotate=false;document.getElementById('bRot').classList.remove('on');}}
 function stepFly(){{if(!fly)return;const u=Math.min(1,(performance.now()-fly.t0)/900),e=u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2;cam.position.lerpVectors(fly.from,fly.to,e);ctr.target.lerpVectors(fly.fromT,fly.toT,e);if(u>=1)fly=null;}}
 function placeTags(){{const w=canvas.clientWidth,h=canvas.clientHeight;Object.keys(REG).forEach(k=>{{const r=REG[k];if(!r.el)return;const v=new THREE.Vector3(r.c[0],r.c[1],r.c[2]).project(cam);const vis=v.z<1&&tumOn&&lgOn[k];r.el.style.display=vis?'block':'none';r.el.style.left=((v.x*.5+.5)*w)+'px';r.el.style.top=((-v.y*.5+.5)*h+ (k==2?-26:(k==3?0:26)))+'px';}});}}
-on('bScan',b=>{{scanOn=!scanOn;b.classList.toggle('on',scanOn)}});
 on('bFocus',()=>{{const r=REG[1].k?REG[1]:(REG[3].k?REG[3]:REG[2]);if(r.k)flyTo(r.c,Math.max(60,Math.cbrt(r.k)*{tumour_step}*6));}});
 on('bShot',()=>{{renderer.render(scene,cam);const a=document.createElement('a');a.download='neuroscope_3d.png';a.href=renderer.domElement.toDataURL('image/png');a.click();}});
 
 function resize(){{const w=canvas.clientWidth||window.innerWidth,h=canvas.clientHeight||window.innerHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();}}
 window.addEventListener('resize',resize);
-(function loop(){{resize();stepScan();stepFly();ctr.update();placeTags();renderer.render(scene,cam);requestAnimationFrame(loop);}})();
+(function loop(){{resize();stepFly();ctr.update();placeTags();renderer.render(scene,cam);requestAnimationFrame(loop);}})();
 </script></body></html>"""
