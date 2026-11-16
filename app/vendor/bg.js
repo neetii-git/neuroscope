@@ -7,12 +7,12 @@
   cv.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;opacity:0;transition:opacity 1.6s ease';
   d.body.appendChild(cv);
   var renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5)); renderer.setClearColor(0x000000, 0);
+  renderer.setPixelRatio(1); renderer.setClearColor(0x000000, 0);
   var scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(40, 1, 0.1, 100); cam.position.set(0, 0, 6.2);
   var grp = new THREE.Group(); scene.add(grp);
   // deterministic pseudo random
   var seed = 7; function rnd() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
-  var N = 760, P = [], i, j;
+  var N = 520, P = [], i, j;
   for (i = 0; i < N; i++) {
     var u = rnd() * 2 - 1, th = rnd() * Math.PI * 2, r = Math.cbrt(rnd());
     var s = Math.sqrt(1 - u * u), x = s * Math.cos(th) * r, y = u * r * 0.82, z = s * Math.sin(th) * r * 0.78;
@@ -31,6 +31,7 @@
     var dx = P[i][0] - P[j][0], dy = P[i][1] - P[j][1], dz = P[i][2] - P[j][2], dd = dx * dx + dy * dy + dz * dz;
     if (dd < maxD * maxD && deg[i] < maxE + 1 && deg[j] < maxE + 1) { seg.push(P[i][0], P[i][1], P[i][2], P[j][0], P[j][1], P[j][2]); edges.push([i, j]); deg[i]++; deg[j]++; }
   }
+  var adj = []; for (i = 0; i < N; i++) adj.push([]); edges.forEach(function (e, k) { adj[e[0]].push(k); adj[e[1]].push(k); });
   var lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(seg), 3));
   grp.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x9aa0a8, transparent: true, opacity: 0.16, depthWrite: false })));
   var np = new Float32Array(N * 3), nc = new Float32Array(N * 3);
@@ -43,14 +44,14 @@
   var T = tex();
   grp.add(new THREE.Points(ng, new THREE.PointsMaterial({ size: 0.075, map: T, vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending })));
   // travelling signals
-  var S = 46, sp = new Float32Array(S * 3), st = [];
+  var S = 36, sp = new Float32Array(S * 3), st = [];
   for (i = 0; i < S; i++) st.push({ e: Math.floor(rnd() * edges.length), t: rnd(), v: 0.004 + rnd() * 0.01 });
   var sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
   grp.add(new THREE.Points(sg, new THREE.PointsMaterial({ size: 0.15, map: T, color: 0xf5c518, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending })));
   function stepSignals() {
     for (var q = 0; q < S; q++) {
       var o = st[q]; o.t += o.v; if (o.t >= 1) { // hop to a connected edge
-        var node = edges[o.e][1], cand = []; for (var w = 0; w < edges.length && cand.length < 12; w++) if (edges[w][0] === node || edges[w][1] === node) cand.push(w);
+        var node = edges[o.e][1], cand = adj[node];
         o.e = cand.length ? cand[Math.floor(rnd() * cand.length)] : Math.floor(rnd() * edges.length); o.t = 0;
       }
       var a = P[edges[o.e][0]], b = P[edges[o.e][1]];
@@ -64,7 +65,11 @@
   function resize() { var w = window.innerWidth, h = window.innerHeight; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); grp.position.x = w > 900 ? 1.55 : 0; grp.scale.setScalar(w > 900 ? 1 : 0.8); }
   window.addEventListener('resize', resize); resize();
   var t0 = performance.now(); cv.style.opacity = '0.9';
-  function frame() {
+  var last = 0;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (now - last < 33) return;   // about 30 frames per second is plenty for an ambient background
+    last = now;
     if (!d.hidden) {
       var el = scrollEl(); sy = el ? el.scrollTop : window.scrollY;
       mx += (tx - mx) * 0.05; my += (ty - my) * 0.05;
@@ -74,7 +79,6 @@
       if (!reduce) stepSignals();
       renderer.render(scene, cam);
     }
-    requestAnimationFrame(frame);
   }
-  stepSignals(); frame();
+  stepSignals(); requestAnimationFrame(frame);
 })();

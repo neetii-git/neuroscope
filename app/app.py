@@ -83,14 +83,10 @@ header[data-testid="stHeader"], [data-testid="stAppViewContainer"], [data-testid
 .block-container, section[data-testid="stSidebar"] {position: relative; z-index: 2;}
 [data-testid="stAppViewContainer"] {position: relative; z-index: 2;}
 @keyframes rise {from {opacity: 0; transform: perspective(900px) translateY(28px) rotateX(8deg);} to {opacity: 1; transform: none;}}
-.block-container > div > div[data-testid="stVerticalBlock"] > div {animation: rise .7s cubic-bezier(.2,.7,.2,1) both;}
-.block-container > div > div[data-testid="stVerticalBlock"] > div:nth-child(2) {animation-delay: .08s;}
-.block-container > div > div[data-testid="stVerticalBlock"] > div:nth-child(3) {animation-delay: .16s;}
-.block-container > div > div[data-testid="stVerticalBlock"] > div:nth-child(4) {animation-delay: .24s;}
 .block-container {padding-top: 1.2rem; max-width: 1280px;}
-section[data-testid="stSidebar"] {background: #141517ee; backdrop-filter: blur(10px); box-shadow: 6px 0 24px -14px #000;}
+section[data-testid="stSidebar"] {background: #141517; box-shadow: 6px 0 24px -14px #000;}
 h1, h2, h3, h4 {color: #F2F2F0;}
-div[data-testid="stMetric"] {background: linear-gradient(150deg, #1D1F23d9, #141517b3); backdrop-filter: blur(8px); border: 1px solid #2C2E33; border-radius: 14px; padding: 12px 16px;
+div[data-testid="stMetric"] {background: linear-gradient(150deg, #1D1F23f2, #141517f2); border: 1px solid #2C2E33; border-radius: 14px; padding: 12px 16px;
   box-shadow: 0 1px 0 #ffffff0d inset, 0 12px 22px -14px #000, 0 2px 4px #0006; transform-style: preserve-3d; transition: transform .18s ease-out, box-shadow .18s ease-out, border-color .18s; will-change: transform;}
 div[data-testid="stMetric"]:hover {border-color: #F5C51877; box-shadow: 0 18px 30px -14px #000, 0 0 0 1px #F5C51833;}
 div[data-testid="stMetricValue"] {color: #F5C518; transform: translateZ(24px);}
@@ -104,8 +100,8 @@ div[data-testid="stTabs"] button[aria-selected="true"] {color: #F5C518; backgrou
 .stButton > button[kind="primary"]:hover {background: #FFD84A; color: #0E0F11;}
 div[data-testid="stPlotlyChart"], div[data-testid="stDataFrame"], iframe {border-radius: 14px;}
 div[data-testid="stPlotlyChart"] {box-shadow: 0 14px 28px -16px #000; border: 1px solid #25272B;}
-div[data-testid="stAlert"] {border-radius: 12px; backdrop-filter: blur(6px);}
-div[data-testid="stExpander"], div[data-testid="stTable"], div[data-testid="stDataFrame"] {background: #141517a6; backdrop-filter: blur(6px); border-radius: 14px;}
+div[data-testid="stAlert"] {border-radius: 12px;}
+div[data-testid="stExpander"], div[data-testid="stTable"], div[data-testid="stDataFrame"] {background: #141517e6; border-radius: 14px;}
 @media (prefers-reduced-motion: reduce) {* {transition: none !important;}}
 </style>
 """
@@ -116,13 +112,14 @@ try {
   const d = window.parent.document;
   if (!d.__nsTilt) {
     d.__nsTilt = true;
-    d.addEventListener('mousemove', e => {
+    let pend = null;
+    d.addEventListener('mousemove', ev => { if (pend) { pend = ev; return; } pend = ev; requestAnimationFrame(() => { const e = pend; pend = null;
       const card = e.target.closest && e.target.closest('div[data-testid="stMetric"]');
       d.querySelectorAll('div[data-testid="stMetric"]').forEach(c => { if (c !== card) c.style.transform = ''; });
       if (!card) return;
       const r = card.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
       card.style.transform = 'perspective(700px) rotateY(' + (x * 14).toFixed(1) + 'deg) rotateX(' + (-y * 14).toFixed(1) + 'deg) translateY(-3px)';
-    }, {passive: true});
+    }); }, {passive: true});
     d.addEventListener('mouseleave', () => d.querySelectorAll('div[data-testid="stMetric"]').forEach(c => c.style.transform = ''));
   }
 } catch (err) {}
@@ -182,11 +179,46 @@ def load_demo_case(demo_dir: str):
     return vols, affine
 
 
+def _disk_cache_path(demo_dir: str, mc: int, ckpt_path: str, drop: tuple) -> str:
+    import hashlib
+    st_ = os.stat(ckpt_path)
+    key = f"{os.path.abspath(demo_dir)}|{mc}|{st_.st_size}|{int(st_.st_mtime)}|{','.join(sorted(drop))}"
+    return os.path.join(os.path.dirname(os.path.abspath(ckpt_path)), ".demo_cache", hashlib.sha1(key.encode()).hexdigest()[:16] + ".npz")
+
+
 @st.cache_resource(show_spinner=False)
 def run_demo_inference(demo_dir: str, mc: int, ckpt_path: str, drop: tuple):
+    """The example patient's prediction is saved to disk after the first run, so later app starts load it in seconds."""
+    from neuroscope.inference.predictor import Prediction
     vols, affine = load_demo_case(demo_dir)
     vols = {k: v for k, v in vols.items() if k not in drop}
-    return run_case(vols, affine, mc, ckpt_path)
+    path = _disk_cache_path(demo_dir, mc, ckpt_path, drop)
+    if os.path.exists(path):
+        try:
+            z = np.load(path, allow_pickle=False)
+            present = [m for m in MODALITIES if m in vols]
+            img, seg, meta = preprocess_case(vols, available=present)
+            labels = z["labels"]
+            regions = np.stack([labels > 0, (labels == 1) | (labels == 3), labels == 3]).astype(np.uint8)
+            pred = Prediction(mean_prob=regions.astype(np.float16), regions=regions, labels=labels, entropy=z["entropy"].astype(np.float32),
+                              mc_std=z["mc_std"].astype(np.float32), case_uncertainty=float(z["case_u"]),
+                              volumes_ml=json.loads(str(z["volumes"])), mc_samples=int(z["mc"]))
+            metrics = region_metrics(regions, labels_to_regions(seg), with_hd95=False) if seg is not None else None
+            voxel_mm3 = float(abs(np.linalg.det(affine[:3, :3]))) or 1.0
+            return dict(img=img, seg=seg, meta=meta, pred=pred, infer_s=float(z["infer_s"]), present=present,
+                        quality=assess_case({m: vols.get(m) for m in MODALITIES}), metrics=metrics, affine=affine,
+                        brain=(np.abs(img).sum(0) > 0), voxel_ml=voxel_mm3 / 1000.0, meshes=None, token=time.time())
+        except Exception:
+            pass
+    res = run_case(vols, affine, mc, ckpt_path)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        p_ = res["pred"]
+        np.savez_compressed(path, labels=p_.labels.astype(np.uint8), entropy=p_.entropy.astype(np.float16), mc_std=p_.mc_std.astype(np.float16), case_u=p_.case_uncertainty,
+                            volumes=json.dumps(p_.volumes_ml), mc=p_.mc_samples, infer_s=res["infer_s"])
+    except Exception:
+        pass
+    return res
 
 
 def run_case(vols, affine, mc: int, ckpt_path: str):
@@ -826,7 +858,7 @@ else:
         with g1:
             @st.cache_data(show_spinner=False)
             def _gl_html(src: str, mod: str, z: Optional[int], mc_: int, tok: float):
-                return brain_html(img[MODALITIES.index(mod)], pred.labels, pred.entropy, brain_step=2, tumour_step=1, height=620,
+                return brain_html(img[MODALITIES.index(mod)], pred.labels, pred.entropy, brain_step=3, tumour_step=1, height=620,
                                   title="", subtitle="", slice_z=z, autorotate=True, show_controls=True,
                                   volumes={k: float((pred.labels == k).sum()) * res["voxel_ml"] for k in (1, 2, 3)})
             components.html(_gl_html(st.session_state.source, gl_mod, st.session_state.z if gl_plane else None, pred.mc_samples, res["token"]), height=620, scrolling=False)

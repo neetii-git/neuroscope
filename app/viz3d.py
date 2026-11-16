@@ -125,7 +125,7 @@ const tp=b64("{_b64(t_pos)}",Int16Array), tl=b64("{_b64(t_lab)}",Uint8Array), te
 const hasUnc={has_unc};
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({{canvas,antialias:true,alpha:true,preserveDrawingBuffer:true}});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.5));
 const scene=new THREE.Scene(); renderer.setClearColor(0x000000,0);
 const cam=new THREE.PerspectiveCamera(38,1,1,5000);
 const ctr=new THREE.OrbitControls(cam,canvas); ctr.enableDamping=true; ctr.dampingFactor=0.08; ctr.autoRotate={'true' if autorotate else 'false'}; ctr.autoRotateSpeed=0.9;
