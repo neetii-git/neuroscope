@@ -190,4 +190,4 @@ BraTS 2020 (Menze et al. 2015; Bakas et al. 2017, 2018), de-identified public re
 
 ## Putting it online
 
-The app ships with a Dockerfile and a `deploy/` folder (Docker Compose + Caddy for automatic HTTPS). Free hosting on Hugging Face Spaces: [deploy/huggingface/DEPLOY_HF.md](deploy/huggingface/DEPLOY_HF.md). Own server at your own domain: [deploy/DEPLOY.md](deploy/DEPLOY.md).
+The app ships with a Dockerfile and a `deploy/` folder (Docker Compose + Caddy for automatic HTTPS). Free hosting on Streamlit Community Cloud: [deploy/STREAMLIT_CLOUD.md](deploy/STREAMLIT_CLOUD.md) (Hugging Face Spaces now need a paid plan for apps; the files in deploy/huggingface are kept for PRO accounts). Own server at your own domain: [deploy/DEPLOY.md](deploy/DEPLOY.md).

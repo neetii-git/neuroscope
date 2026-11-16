@@ -56,11 +56,20 @@ ACCENT = "#F5C518"   # yellow accent, used sparingly
 GREEN = "#B8BABF"   # neutral grey for bars
 
 
+def _data_root() -> str:
+    """Local runs/ and demo_case/ when present (laptop); otherwise the copy shipped in hosting/data (hosted app)."""
+    if os.path.exists(os.path.join(ROOT, "runs", "base", "best.pt")):
+        return ROOT
+    hosted = os.path.join(ROOT, "hosting", "data")
+    return hosted if os.path.exists(os.path.join(hosted, "runs", "base", "best.pt")) else ROOT
+
+
 def parse_args():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", default=os.environ.get("NEUROSCOPE_CKPT", os.path.join(ROOT, "runs", "base", "best.pt")))
-    ap.add_argument("--results", default=os.environ.get("NEUROSCOPE_RESULTS", os.path.join(ROOT, "runs", "base", "results")))
-    ap.add_argument("--demo-dir", default=os.environ.get("NEUROSCOPE_DEMO", os.path.join(ROOT, "demo_case")))
+    base = _data_root()
+    ap.add_argument("--ckpt", default=os.environ.get("NEUROSCOPE_CKPT", os.path.join(base, "runs", "base", "best.pt")))
+    ap.add_argument("--results", default=os.environ.get("NEUROSCOPE_RESULTS", os.path.join(base, "runs", "base", "results")))
+    ap.add_argument("--demo-dir", default=os.environ.get("NEUROSCOPE_DEMO", os.path.join(base, "demo_case")))
     args, _ = ap.parse_known_args()
     return args
 
@@ -68,7 +77,11 @@ def parse_args():
 ARGS = parse_args()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 if DEVICE == "cpu":
-    torch.set_num_threads(max(1, os.cpu_count() or 1))
+    try:   # cores actually available to this process (containers often report the host's core count)
+        _cores = len(os.sched_getaffinity(0))
+    except AttributeError:
+        _cores = os.cpu_count() or 1
+    torch.set_num_threads(max(1, min(_cores, 8)))
 
 CSS = """
 <style>
