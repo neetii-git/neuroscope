@@ -183,3 +183,7 @@ longitudinal volume tracking · ONNX export · FastAPI service + audit log.
 
 BraTS 2020 (Menze et al. 2015; Bakas et al. 2017, 2018), de-identified public research data, via Kaggle
 `awsaf49/brats20-dataset-training-validation`.
+
+## Putting it online
+
+The app ships with a Dockerfile and a `deploy/` folder (Docker Compose + Caddy for automatic HTTPS). Step-by-step instructions for running it at your own domain on a DigitalOcean server: [deploy/DEPLOY.md](deploy/DEPLOY.md).

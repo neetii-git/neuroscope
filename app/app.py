@@ -607,7 +607,8 @@ with st.sidebar:
                                     help="Shows how the model behaves when a scan is unavailable. At least one sequence must remain."))
     use_demo = st.button("Load example patient", type="primary", width="stretch", disabled=not has_demo,
                          help="An anonymised case from the BraTS 2020 test split (never used in training)")
-    st.caption("Or upload MRI files (.nii / .nii.gz). Any subset of the four sequences works.")
+    st.caption("Or upload MRI files (.nii / .nii.gz). Any subset of the four sequences works. "
+               "Privacy: scans are processed in memory for this session only. Nothing is stored on the server.")
     uploads = {m: st.file_uploader(MOD_LABEL[m], type=["nii", "gz"], key=m) for m in MODALITIES}
     seg_upload = st.file_uploader("Ground-truth mask (optional)", type=["nii", "gz"], key="seg") if not simple else None
     st.markdown("**Step 2. Run**")

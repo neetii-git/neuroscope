@@ -1,0 +1,26 @@
+# Run from the deploy/ folder:  DOMAIN=neuroscope.in docker compose up -d --build
+services:
+  app:
+    build: ..
+    restart: unless-stopped
+    volumes:
+      - ../runs:/data/runs:ro
+      - ../demo_case:/data/demo_case:ro
+    mem_limit: 3g
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:?set DOMAIN, e.g. DOMAIN=neuroscope.in}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+volumes:
+  caddy_data:
+  caddy_config:

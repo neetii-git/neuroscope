@@ -1,0 +1,10 @@
+runs/
+cache/
+demo_case/
+*.zip
+notebooks/
+docs/
+tests/
+**/__pycache__
+.git
+*.png
