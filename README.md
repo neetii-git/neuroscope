@@ -1,5 +1,8 @@
 # NeuroScope
 
+**Live app:** https://neuroscopeapp.streamlit.app (free hosting; if it has been idle for 12 hours, click the wake-up button and wait about a minute)
+
+
 **Modality-robust, uncertainty-aware brain tumour segmentation with a validated human-review gate.**
 Research & decision-support prototype — not a medical device.
 

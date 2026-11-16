@@ -6,7 +6,7 @@ Up to 2.7 GB memory (NeuroScope peaks at about 1.9 GB). Sleeps after 12 hours wi
 1. share.streamlit.io > **Continue with GitHub** and authorise Streamlit.
 2. **Create app** > **Deploy a public app from GitHub**.
 3. Repository `neetii-git/neuroscope`, branch `main`, main file path `app/app.py`.
-4. App URL: choose the name, e.g. `neuroscope`.
+4. App URL: choose the name, e.g. `neuroscopeapp` (the live app uses this).
 5. Advanced settings: Python 3.11. **Deploy**.
 
 The model and example patient are read from `hosting/data` in the repository. Every push to `main` redeploys automatically.
