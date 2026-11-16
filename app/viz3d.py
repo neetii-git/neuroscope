@@ -98,7 +98,6 @@ def brain_html(vol: np.ndarray, labels: Optional[np.ndarray] = None, entropy: Op
  #leg i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}}
  .vol{{font-weight:500;color:#E5E7EB;margin-left:5px}} .tag{{position:absolute;transform:translate(-50%,-130%);background:rgba(11,18,32,.82);border:1px solid #334155;border-radius:7px;padding:3px 8px;font-size:11px;color:#E5E7EB;cursor:pointer;white-space:nowrap;pointer-events:auto}} .tag:hover{{border-color:#F5C518}}
  .lg{{cursor:pointer;user-select:none}} .lg:not(.on){{opacity:.35;text-decoration:line-through}} #cutw{{display:inline-flex;align-items:center;gap:6px}} #cut{{width:120px;accent-color:#F5C518}}
- #hud{{position:absolute;inset:10px;pointer-events:none;border:1px solid transparent}} #hud:before,#hud:after{{content:'';position:absolute;width:22px;height:22px;border:2px solid #F5C51888}} #hud:before{{left:0;top:0;border-right:0;border-bottom:0}} #hud:after{{right:0;bottom:0;border-left:0;border-top:0}}
  #hint{{position:absolute;right:16px;bottom:12px;color:#64748B;font-size:11px}}
 </style></head><body>
 <canvas id="c"></canvas>
@@ -114,7 +113,6 @@ def brain_html(vol: np.ndarray, labels: Optional[np.ndarray] = None, entropy: Op
  <button id="bShot">Screenshot</button>
 </div>
 <div id="leg"><span class="lg on" data-g="1"><i style="background:#ff3333"></i>necrotic core<b class="vol" id="v1"></b></span><span class="lg on" data-g="2"><i style="background:#33cc33"></i>edema<b class="vol" id="v2"></b></span><span class="lg on" data-g="3"><i style="background:#ffd91a"></i>enhancing<b class="vol" id="v3"></b></span><span id="cutw">cut through <input id="cut" type="range" min="0" max="100" value="100"></span><span id="legU" style="display:none"><i style="background:#F2F2F0"></i>uncertainty (bright = unsure)</span></div>
-<div id="hud"></div>
 <div id="tags"></div>
 <div id="hint">drag to rotate, scroll to zoom, right-drag to pan</div>
 <script>{_vendor_js()}</script>
