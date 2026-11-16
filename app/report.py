@@ -58,6 +58,14 @@ def analyse(res: Dict, thr: Optional[Dict], flagged: bool, sub_df, test_df, moda
     out["wt_ml"] = float(wt.sum() * vox_ml)
     out["wt_pct_brain"] = 100.0 * out["wt_ml"] / out["brain_ml"] if out["brain_ml"] else 0.0
     out["location"] = _location(lab, brain, res["meta"], res["affine"])
+    if wt.any():
+        z = np.linalg.norm(np.asarray(res["affine"])[:3, :3], axis=0)
+        cc_, n_ = ndi.label(wt)
+        main = cc_ == (np.argmax(np.bincount(cc_.ravel())[1:]) + 1) if n_ > 1 else wt
+        idx = np.argwhere(main)
+        span = idx.max(0) - idx.min(0) + 1          # (axial, orig axis 0, orig axis 1)
+        out["extent_mm"] = [float(span[1] * z[0]), float(span[2] * z[1]), float(span[0] * z[2])]  # LR, AP, SI
+        out["slice_range"] = [int(idx[:, 0].min()), int(idx[:, 0].max())]
 
     # case uncertainty
     u, th = float(pred.case_uncertainty), (thr or {}).get("threshold")
@@ -72,9 +80,9 @@ def analyse(res: Dict, thr: Optional[Dict], flagged: bool, sub_df, test_df, moda
         if flagged:
             add("critical", "Model uncertainty above the review threshold",
                 f"Case uncertainty {u:.4f} is {ratio:.1f} times the validated threshold ({th:.4f}). In the held-out test set, cases above this level "
-                "were the ones most likely to have a poor outline (whole-tumour Dice below 0.75).", "Whole case")
+                "were most likely to have a poor outline (whole-tumour Dice below 0.75).", "Whole case")
         elif ratio > 0.8:
-            add("warn", "Uncertainty close to the review threshold", f"Case uncertainty {u:.4f} is {ratio*100:.0f}% of the threshold ({th:.4f}). Check the border slices.", "Whole case")
+            add("warn", "Uncertainty close to the review threshold", f"Case uncertainty {u:.4f} is {ratio*100:.0f}% of the threshold ({th:.4f}). Review border slices.", "Whole case")
 
     # missing sequences
     missing = [m for m in modalities if m not in res["present"]]
@@ -97,7 +105,7 @@ def analyse(res: Dict, thr: Optional[Dict], flagged: bool, sub_df, test_df, moda
         lvl = "critical" if any(c.status == "fail" for c in bad) else "warn"
         mods = sorted({c.modality.upper() for c in bad})
         add(lvl, f"Input quality: {len(bad)} check{'s' if len(bad) > 1 else ''} raised",
-            " ".join(f"{c.modality.upper()}: {c.message.rstrip('.')}." for c in bad[:5]) + (" More in the input quality table." if len(bad) > 5 else ""),
+            " ".join(f"{c.modality.upper()}: {c.message.rstrip('.')}." for c in bad[:5]) + (f" {len(bad) - 5} further." if len(bad) > 5 else ""),
             ", ".join(mods))
 
     # uncertain slices and regions
@@ -107,7 +115,7 @@ def analyse(res: Dict, thr: Optional[Dict], flagged: bool, sub_df, test_df, moda
         top = [int(i) for i in np.argsort(per)[::-1] if area[i] >= 30][:3]
         out["slices"] = {"most_uncertain": top, "largest": int(np.argmax(area)), "profile": per.tolist()}
         if top:
-            add("info", "Most uncertain slices", f"Disagreement between repeated runs is highest on axial slices {', '.join(str(i) for i in sorted(top))}. Review these first.",
+            add("info", "Most uncertain slices", f"Disagreement between repeated runs is highest on axial slices {', '.join(str(i) for i in sorted(top))}. Recommended for first review.",
                 f"Slices {', '.join(str(i) for i in sorted(top))}")
         rs = {k: v for k, v in out["regions"].items() if v["mean_u"] is not None}
         if rs:
@@ -120,8 +128,7 @@ def analyse(res: Dict, thr: Optional[Dict], flagged: bool, sub_df, test_df, moda
             eu, iu = ent[edge].mean(), ent[inner].mean()
             out["edge_u"], out["inner_u"] = float(eu / LOG2), float(iu / LOG2)
             if eu > 2.0 * iu:
-                add("info", "Uncertainty sits on the tumour border", f"Border voxels are {eu/max(iu,1e-9):.1f} times more uncertain than the interior. This is the usual pattern: the interior is "
-                    "clear, the exact edge is a judgement call. Check the outline where it meets normal tissue.", "Tumour border")
+                add("info", "Uncertainty concentrated at tumour border", f"Border voxels are {eu/max(iu,1e-9):.1f} times more uncertain than the interior. Boundary placement is the main source of disagreement.", "Tumour border")
 
     # fragments
     if wt.any():
@@ -137,7 +144,7 @@ def analyse(res: Dict, thr: Optional[Dict], flagged: bool, sub_df, test_df, moda
                     zi = np.argwhere(cc == j)[:, 0]
                     zs.append(int(np.median(zi)))
                 add("warn", f"{len(small)} small separate fragment{'s' if len(small) > 1 else ''} predicted",
-                    f"{tot:.2f} mL in total sits apart from the main mass. Isolated fragments are the most common false positives; confirm or discard them.",
+                    f"{tot:.2f} mL in total sits apart from the main mass. Isolated fragments are a common source of false positives; confirm or discard.",
                     f"Near slices {', '.join(str(z) for z in sorted(set(zs)))}")
         out["components"] = int(n)
 
@@ -145,9 +152,9 @@ def analyse(res: Dict, thr: Optional[Dict], flagged: bool, sub_df, test_df, moda
     for k in (1, 3):
         v = out["regions"][k]["ml"]
         if 0 < v < 0.5:
-            add("info", f"Very small {REGION_NAMES[k].lower()} ({v:.2f} mL)", "Small structures are where segmentation is least reliable: a few voxels change the volume noticeably.", REGION_NAMES[k])
+            add("info", f"Very small {REGION_NAMES[k].lower()} ({v:.2f} mL)", "Volumes of small structures are sensitive to a few voxels; interpret with caution.", REGION_NAMES[k])
     if not wt.any():
-        add("critical", "No tumour found", "The model predicted no tumour voxels. If a lesion is expected, check the scan orientation and sequences.", "Whole case")
+        add("critical", "No tumour found", "No tumour voxels predicted. If a lesion is expected, check scan orientation and sequences.", "Whole case")
 
     # ground truth disagreement
     seg = res.get("seg")
@@ -164,8 +171,8 @@ def analyse(res: Dict, thr: Optional[Dict], flagged: bool, sub_df, test_df, moda
         if both:
             worst = sorted(both, key=lambda t: t[1])[:3]
             out["gt"]["worst_slices"] = [(i, d) for i, d in worst]
-            add("info", "Where the model disagrees with the expert outline",
-                f"Missed by the model: {fn:.1f} mL. Predicted beyond the expert outline: {fp:.1f} mL. Weakest slices (whole-tumour Dice): "
+            add("info", "Disagreement with reference segmentation",
+                f"Under-segmented {fn:.1f} mL, over-segmented {fp:.1f} mL. Lowest per-slice whole-tumour Dice: "
                 + ", ".join(f"{i} ({d:.2f})" for i, d in worst) + ".", f"Slices {', '.join(str(i) for i, _ in worst)}")
     order = {"critical": 0, "warn": 1, "info": 2}
     out["findings"].sort(key=lambda f: order[f["level"]])
@@ -173,32 +180,32 @@ def analyse(res: Dict, thr: Optional[Dict], flagged: bool, sub_df, test_df, moda
 
 
 _CSS = """
-*{box-sizing:border-box} body{margin:0;background:#2a2c30;font-family:'Inter','Segoe UI',system-ui,sans-serif;color:#1b1c1e}
-.page{max-width:900px;margin:18px auto;background:#fbfbf9;padding:44px 52px;box-shadow:0 20px 50px -20px #000;border-radius:6px}
-.top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #F5C518;padding-bottom:14px}
-.brand{font-family:'Space Grotesk','Inter',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.02em}
-.sub{color:#6b6e73;font-size:12px;margin-top:3px} .meta{text-align:right;font-size:12px;color:#4a4d52;line-height:1.55}
-h2{font-family:'Space Grotesk','Inter',sans-serif;font-size:15px;letter-spacing:.06em;text-transform:uppercase;margin:30px 0 10px;color:#1b1c1e;border-left:4px solid #F5C518;padding-left:10px}
-.badge{display:inline-block;padding:8px 14px;border-radius:6px;font-weight:600;font-size:13px;margin:16px 0 4px}
-.b-red{background:#2b1414;color:#ff9a9a;border:1px solid #7a2b2b} .b-ok{background:#16231a;color:#9be3ae;border:1px solid #2b6b3d}
-.lead{font-size:15px;line-height:1.6;margin:10px 0}
-table{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0} th{text-align:left;color:#6b6e73;font-weight:500;border-bottom:1px solid #d8d9d6;padding:6px 8px}
-td{padding:7px 8px;border-bottom:1px solid #ecece8} td.n{font-variant-numeric:tabular-nums;text-align:right} th.n{text-align:right}
-.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;vertical-align:middle}
-.gauge{position:relative;height:14px;border-radius:7px;background:linear-gradient(90deg,#9be3ae 0%,#F5C518 55%,#ff6b6b 100%);margin:30px 6px 26px}
-.mk{position:absolute;top:-8px;width:3px;height:30px;background:#1b1c1e} .mk span{position:absolute;top:32px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap;color:#33363a}
-.mk.t{background:#6b6e73} .mk.t span{top:-20px}
-.f{display:flex;gap:12px;padding:12px 14px;border:1px solid #e4e4e0;border-radius:8px;margin:8px 0;background:#fff}
-.f .bar{width:5px;border-radius:3px;flex:none} .f.critical .bar{background:#d64545} .f.warn .bar{background:#F5C518} .f.info .bar{background:#9a9da3}
-.f h4{margin:0 0 3px;font-size:14px} .f p{margin:0;font-size:13px;line-height:1.5;color:#3a3d42} .f .w{font-size:11px;color:#6b6e73;margin-top:5px;text-transform:uppercase;letter-spacing:.05em}
-.imgs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px} .imgs figure{margin:0} .imgs img{width:100%;border-radius:4px;display:block;background:#000}
-figcaption{font-size:11px;color:#6b6e73;margin-top:4px}
-.note{font-size:11.5px;color:#6b6e73;line-height:1.55;border-top:1px solid #d8d9d6;margin-top:30px;padding-top:12px}
-.prof{display:flex;align-items:flex-end;gap:1px;height:70px;margin:8px 0 4px;border-bottom:1px solid #cfd0cc}
-.prof i{flex:1;background:#b9bbc0;min-width:1px} .prof i.hot{background:#F5C518}
-.pnt{position:sticky;top:0}
-@media print{body{background:#fff}.page{box-shadow:none;margin:0;max-width:none;padding:18mm}.f,.imgs,table{break-inside:avoid}}
+*{box-sizing:border-box} body{margin:0;background:#3a3c40;font-family:'Inter','Segoe UI',Arial,sans-serif;color:#111;font-size:13px}
+.page{max-width:860px;margin:18px auto;background:#fff;padding:40px 48px 34px;box-shadow:0 10px 40px -12px #000}
+.hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #111;padding-bottom:10px}
+.org{font-family:'Space Grotesk','Inter',sans-serif;font-size:20px;font-weight:700;letter-spacing:-.01em}
+.ttl{font-size:12px;color:#444;margin-top:2px;text-transform:uppercase;letter-spacing:.08em}
+.rid{font-size:11px;color:#444;text-align:right;line-height:1.5}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid #bbb;padding:10px 0;gap:6px 18px}
+.kv div{font-size:12px} .kv b{display:block;font-size:10px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:1px}
+.status{margin:14px 0 4px;border:1px solid #111;padding:8px 12px;font-size:12px;display:flex;justify-content:space-between}
+.status b{letter-spacing:.04em}
+h3{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin:22px 0 6px;padding-bottom:3px;border-bottom:1px solid #ccc}
+p{margin:4px 0;line-height:1.55}
+ol{margin:4px 0;padding-left:20px;line-height:1.6} ol li{margin:2px 0}
+table{width:100%;border-collapse:collapse;margin:4px 0;font-size:12px}
+th{text-align:left;font-weight:600;font-size:11px;color:#333;border-bottom:1px solid #111;padding:5px 6px}
+td{padding:5px 6px;border-bottom:1px solid #e3e3e3;vertical-align:top} .n{text-align:right;font-variant-numeric:tabular-nums}
+.sev{font-weight:600;font-size:11px} .s0{color:#b00020} .s1{color:#8a6100} .s2{color:#555}
+.figs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px} .figs img{width:100%;display:block;background:#000}
+.cap{font-size:11px;color:#444;margin:4px 0 0}
+.prof{display:flex;align-items:flex-end;gap:1px;height:56px;border-bottom:1px solid #111;margin-top:6px} .prof i{flex:1;background:#9a9a9a} .prof i.h{background:#111}
+.sign{display:grid;grid-template-columns:2fr 1.4fr 1fr;gap:24px;margin-top:30px} .sign div{border-top:1px solid #111;padding-top:4px;font-size:11px;color:#444}
+.ft{margin-top:22px;font-size:10.5px;color:#555;line-height:1.5;border-top:1px solid #ccc;padding-top:8px}
+@media print{body{background:#fff}.page{box-shadow:none;margin:0;max-width:none;padding:14mm 16mm}table,.figs,ol{break-inside:avoid}}
 """
+
+_SEV = {"critical": ("High", 0), "warn": ("Moderate", 1), "info": ("Note", 2)}
 
 
 def _fnum(v, d=2):
@@ -207,85 +214,119 @@ def _fnum(v, d=2):
 
 def report_html(a: Dict, res: Dict, flagged: bool, thr: Optional[Dict], model_info: Dict, case_label: str, images: Dict[str, str],
                 mc: int, device: str, infer_s: float) -> str:
+    import hashlib
     e = html.escape
-    ts = time.strftime("%d %b %Y, %H:%M")
+    now = time.localtime()
+    rid = "NS-" + time.strftime("%Y%m%d", now) + "-" + hashlib.sha1(f"{case_label}{a['wt_ml']:.3f}{a['u']:.5f}".encode()).hexdigest()[:6].upper()
     q = res["quality"]
+    mods = [m.upper() for m in res["present"]]
+    miss = [m.upper() for m in ["t1", "t1ce", "t2", "flair"] if m not in res["present"]]
     loc = a.get("location") or {}
-    where = (f"{loc['side']}, {loc['ap']}, {loc['si']}" if loc else "not determined")
-    badge = ('<div class="badge b-red">REVIEW RECOMMENDED. Model uncertainty is above the validated threshold.</div>' if flagged
-             else '<div class="badge b-ok">WITHIN VALIDATED THRESHOLD. Expert confirmation is still required.</div>')
-    wt, tc, et = (a["regions"][k]["ml"] for k in (2, 1, 3))
-    whole = a["wt_ml"]
-    lead = (f"The model outlines an abnormal region of <b>{whole:.1f} mL</b> ({a['wt_pct_brain']:.1f}% of brain volume), located in the <b>{e(where)}</b>. "
-            f"It contains <b>{a['regions'][1]['ml']:.1f} mL</b> necrotic or non-enhancing core, <b>{a['regions'][3]['ml']:.1f} mL</b> enhancing tumour and "
-            f"<b>{a['regions'][2]['ml']:.1f} mL</b> surrounding edema.")
-    # gauge
-    u, th = a["u"], a.get("thr")
-    gauge = ""
-    if th:
-        mx = max(u, th) * 1.6
-        pu, pt = min(98, 100 * u / mx), min(98, 100 * th / mx)
-        pct = a.get("u_percentile")
-        gauge = (f'<div class="gauge"><div class="mk t" style="left:{pt:.1f}%"><span>threshold {th:.3f}</span></div>'
-                 f'<div class="mk" style="left:{pu:.1f}%"><span>this case {u:.3f}</span></div></div>'
-                 + (f'<div class="sub">Higher than {pct:.0f}% of the {a.get("n_test", 74)} held-out test patients.</div>' if pct is not None else ""))
-    # volumes table
-    rows = ""
-    cols = {1: "#ff3333", 2: "#33cc33", 3: "#ffd91a"}
-    for k in (1, 3, 2):
-        r = a["regions"][k]
-        rows += (f'<tr><td><span class="dot" style="background:{cols[k]}"></span>{e(r["name"])}</td><td class="n">{r["ml"]:.2f}</td>'
-                 f'<td class="n">{_fnum(r["mean_u"])}</td></tr>')
-    rows += f'<tr><td><b>Whole tumour (all labels)</b></td><td class="n"><b>{whole:.2f}</b></td><td class="n">-</td></tr>'
-    # findings
-    fh = ""
-    for f in a["findings"]:
-        fh += (f'<div class="f {f["level"]}"><div class="bar"></div><div><h4>{e(f["title"])}</h4><p>{e(f["detail"])}</p>'
-               + (f'<div class="w">Where: {e(f["where"])}</div>' if f["where"] else "") + "</div></div>")
-    if not fh:
-        fh = '<div class="f info"><div class="bar"></div><div><h4>No issues detected</h4><p>No automated check raised a concern for this case.</p></div></div>'
-    # images
-    ih = ""
-    for key, cap in (("largest", "Largest tumour slice"), ("uncertain", "Most uncertain slice")):
-        if images.get(key):
-            ih += f'<h2 style="margin-top:24px">{cap}</h2><div class="imgs">' + "".join(
-                f'<figure><img src="data:image/png;base64,{images[key][n]}"><figcaption>{c}</figcaption></figure>'
-                for n, c in (("img", "Scan"), ("pred", "Predicted outline"), ("unc", "Uncertainty (bright = unsure)"))) + "</div>"
-    # profile
-    prof = ""
-    sl = a.get("slices") or {}
-    if sl.get("profile"):
-        pr = np.array(sl["profile"]); mxv = max(pr.max(), 1e-6); hot = set(sl.get("most_uncertain", []))
-        prof = ('<h2>Uncertainty across slices</h2><div class="prof">' + "".join(
-            f'<i class="{"hot" if i in hot else ""}" style="height:{100*v/mxv:.0f}%" title="slice {i}"></i>' for i, v in enumerate(pr)) +
-            '</div><div class="sub">Mean uncertainty inside the predicted tumour per axial slice. Yellow bars are the three most uncertain.</div>')
-    # gt
-    gth = ""
+    R = a["regions"]
+    th, u, pct = a.get("thr"), a["u"], a.get("u_percentile")
+    ext = a.get("extent_mm")
+    sr = a.get("slice_range")
+
+    # findings narrative
+    fnd = []
+    if a["wt_ml"] > 0:
+        where = f"{loc['side']}, {loc['ap']}, {loc['si']}" if loc else "location not determined"
+        fnd.append(f"<p><b>Lesion.</b> {'A dominant' if a.get('components', 1) > 1 else 'A single'} segmented lesion is identified in the {e(where)} region"
+                   + (f", spanning axial slices {sr[0]} to {sr[1]}" if sr else "") + ".</p>")
+        if ext:
+            fnd.append(f"<p><b>Size.</b> Maximum extent of the main lesion approximately {ext[0]:.0f} x {ext[1]:.0f} x {ext[2]:.0f} mm (left-right x anterior-posterior x superior-inferior). "
+                       f"Whole tumour volume {a['wt_ml']:.1f} mL, {a['wt_pct_brain']:.1f}% of segmented brain volume.</p>")
+        fnd.append(f"<p><b>Composition.</b> Enhancing tumour {R[3]['ml']:.1f} mL; necrotic or non-enhancing core {R[1]['ml']:.1f} mL; "
+                   f"peritumoral edema {R[2]['ml']:.1f} mL. Tumour core (enhancing plus necrotic) {R[1]['ml'] + R[3]['ml']:.1f} mL.</p>")
+        if a.get("components", 1) > 1:
+            fnd.append(f"<p><b>Separate components.</b> {a['components'] - 1} additional component{'s' if a['components'] > 2 else ''} separate from the main lesion; see quality control.</p>")
+    else:
+        fnd.append("<p>No tumour voxels were predicted.</p>")
     if a.get("gt"):
         g = a["gt"]
-        gth = ('<h2>Agreement with the expert outline</h2><table><tr><th>Region</th><th class="n">Dice</th></tr>'
-               + "".join(f'<tr><td>{e(n)}</td><td class="n">{_fnum(v, 3)}</td></tr>' for n, v in g["dice"].items())
-               + f'</table><div class="sub">Missed: {g["fn_ml"]:.1f} mL. Over-predicted: {g["fp_ml"]:.1f} mL.</div>')
+        fnd.append(f"<p><b>Comparison with reference segmentation.</b> Dice per label: "
+                   + "; ".join(f"{e(n.lower())} {_fnum(v, 3)}" for n, v in g["dice"].items())
+                   + f". Under-segmented {g['fn_ml']:.1f} mL, over-segmented {g['fp_ml']:.1f} mL.</p>")
+
+    # measurements
+    mrows = ""
+    for k in (3, 1, 2):
+        mrows += f"<tr><td>{e(R[k]['name'])}</td><td class='n'>{R[k]['ml']:.2f}</td><td class='n'>{_fnum(R[k]['mean_u'])}</td></tr>"
+    mrows += f"<tr><td><b>Whole tumour</b></td><td class='n'><b>{a['wt_ml']:.2f}</b></td><td class='n'></td></tr>"
+
+    # reliability
+    rel = "<table><tr><th>Measure</th><th class='n'>Value</th></tr>"
+    rel += f"<tr><td>Case uncertainty (mean predictive entropy in tumour region)</td><td class='n'>{u:.4f}</td></tr>"
+    if th:
+        rel += f"<tr><td>Review threshold (fixed on validation set)</td><td class='n'>{th:.4f}</td></tr>"
+        rel += f"<tr><td>Ratio to threshold</td><td class='n'>{u/th:.2f}</td></tr>"
+    if pct is not None:
+        rel += f"<tr><td>Percentile among {a.get('n_test', 74)} held-out test cases</td><td class='n'>{pct:.0f}</td></tr>"
+    if a.get("edge_u") is not None:
+        rel += f"<tr><td>Mean uncertainty, tumour border / interior (0 to 1)</td><td class='n'>{a['edge_u']:.2f} / {a['inner_u']:.2f}</td></tr>"
+    rel += "</table>"
+
+    # QC table
+    qrows = ""
+    for f in a["findings"]:
+        lab_, ci = _SEV[f["level"]]
+        qrows += f"<tr><td class='sev s{ci}'>{lab_}</td><td>{e(f['title'])}</td><td>{e(f['where'] or '-')}</td><td>{e(f['detail'])}</td></tr>"
+    if not qrows:
+        qrows = "<tr><td colspan='4'>No flags raised.</td></tr>"
     bad = [c for c in q.checks if c.status != "pass"]
-    qrows = "".join(f'<tr><td>{e(c.modality.upper())}</td><td>{e(c.status)}</td><td>{e(c.message)}</td></tr>' for c in bad) or \
-        '<tr><td colspan="3">All checks passed.</td></tr>'
-    qrows += f'<tr><td colspan="3" class="sub">{len(q.checks) - len(bad)} of {len(q.checks)} automated checks passed.</td></tr>'
-    mods = ", ".join(m.upper() for m in res["present"]); miss = [m.upper() for m in ["t1", "t1ce", "t2", "flair"] if m not in res["present"]]
-    return f"""<!doctype html><html><head><meta charset="utf-8"><title>NeuroScope report</title>
-<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap');{_CSS}</style></head>
-<body><div class="page">
-<div class="top"><div><div class="brand">NeuroScope</div><div class="sub">Brain tumour segmentation report with uncertainty and fault analysis</div></div>
-<div class="meta">Case: <b>{e(case_label)}</b><br>Generated {ts}<br>Sequences: {e(mods)}{(' (missing ' + ', '.join(miss) + ')') if miss else ''}</div></div>
-{badge}
-<h2>Summary</h2><p class="lead">{lead}</p>
-<h2>Reliability</h2>{gauge}
-<div class="sub">Uncertainty is the average disagreement between {mc} repeated runs of the network inside the tumour region. The threshold was fixed on the validation set and never tuned on test data.</div>
-<h2>Findings and faults</h2>{fh}
-<h2>Volumes</h2><table><tr><th>Region</th><th class="n">Volume (mL)</th><th class="n">Mean uncertainty (0 to 1)</th></tr>{rows}</table>
-{prof}{ih}{gth}
-<h2>Input quality</h2><table><tr><th>Sequence</th><th>Status</th><th>Detail</th></tr>{qrows}</table><div class="sub">Quality score {q.score:.2f} ({e(q.status)}).</div>
-<div class="note"><b>Method.</b> 2D U-Net (7.8M parameters) trained on BraTS 2020 with modality dropout; uncertainty from Monte Carlo dropout ({mc} samples, {e(device)}, {infer_s:.1f} s).
-<br><b>Limitations.</b> Trained on adult glioma only (skull-stripped, co-registered). Not validated on other tumour types, scanners, children or post-operative scans. Uncertainty measures model
-disagreement, not correctness. Automated checks are heuristics.
-<br><b>Research prototype. Not a medical device. Every result must be reviewed by a qualified clinician.</b></div>
+
+    # impression
+    imp = []
+    if a["wt_ml"] > 0:
+        side = loc.get("side", "brain")
+        imp.append(f"Segmented tumour in the {e(side)}, whole tumour volume {a['wt_ml']:.1f} mL"
+                   + (f", maximum extent about {max(ext):.0f} mm" if ext else "") + ".")
+        imp.append(f"Enhancing component {R[3]['ml']:.1f} mL with {R[1]['ml']:.1f} mL necrotic or non-enhancing core and {R[2]['ml']:.1f} mL surrounding edema.")
+    else:
+        imp.append("No tumour segmented.")
+    if th:
+        imp.append(("Model uncertainty is above the validated review threshold. The segmentation should be reviewed and corrected before use."
+                    if flagged else "Model uncertainty is within the validated threshold. Clinician confirmation is still required."))
+    if miss:
+        imp.append(f"Analysis performed without {', '.join(miss)}; accuracy for dependent regions is reduced.")
+    n_hi = sum(1 for f in a["findings"] if f["level"] == "critical"); n_mod = sum(1 for f in a["findings"] if f["level"] == "warn")
+    if n_hi or n_mod:
+        imp.append(f"Quality control: {n_hi} high and {n_mod} moderate flag{'s' if n_hi + n_mod != 1 else ''} (section 5).")
+    slices = (a.get("slices") or {}).get("most_uncertain") or []
+    if slices:
+        imp.append(f"Suggested review slices: {', '.join(str(z) for z in sorted(slices))}.")
+
+    # figures
+    figs, fno = "", 1
+    for key, cap in (("largest", "slice with the largest tumour area"), ("uncertain", "slice with the highest uncertainty")):
+        if images.get(key):
+            figs += ("<div class='figs'>" + "".join(f"<img src='data:image/png;base64,{images[key][n]}'>" for n in ("img", "pred", "unc"))
+                     + f"</div><p class='cap'>Fig. {fno}. Axial {cap}. Left to right: FLAIR, predicted labels (red necrotic core, yellow enhancing, green edema), uncertainty map.</p>")
+            fno += 1
+    sl = a.get("slices") or {}
+    if sl.get("profile"):
+        pr = np.array(sl["profile"]); mx = max(pr.max(), 1e-6); hot = set(sl.get("most_uncertain", []))
+        figs += ("<div class='prof'>" + "".join(f"<i class='{'h' if i in hot else ''}' style='height:{100*v/mx:.0f}%'></i>" for i, v in enumerate(pr))
+                 + f"</div><p class='cap'>Fig. {fno}. Mean uncertainty inside the predicted tumour for each axial slice (inferior to superior). Dark bars: three highest.</p>")
+
+    status = ("REVIEW REQUIRED", "Uncertainty above validated threshold") if flagged else ("WITHIN THRESHOLD", "Clinician confirmation required")
+    return f"""<!doctype html><html><head><meta charset="utf-8"><title>{rid}</title>
+<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@700&display=swap');{_CSS}</style></head><body><div class="page">
+<div class="hd"><div><div class="org">NeuroScope</div><div class="ttl">Automated MRI brain tumour segmentation report</div></div>
+<div class="rid">Report ID {rid}<br>{time.strftime('%d %b %Y, %H:%M', now)}<br>Preliminary, automated</div></div>
+<div class="kv"><div><b>Case</b>{e(case_label)}</div><div><b>Examination</b>MRI brain, multi-parametric</div><div><b>Sequences used</b>{', '.join(mods)}</div>
+<div><b>Sequences missing</b>{', '.join(miss) or 'None'}</div><div><b>Input quality</b>{e(q.status)} ({q.score:.2f})</div><div><b>Processing</b>{mc} MC samples, {e(device.upper())}, {infer_s:.1f} s</div></div>
+<div class="status"><b>{status[0]}</b><span>{status[1]}</span></div>
+<h3>1. Technique</h3><p>Automated slice-wise segmentation with a 2D U-Net (7.8 M parameters) trained on BraTS 2020 with modality dropout. Labels: necrotic or non-enhancing
+core, peritumoral edema, enhancing tumour. Voxel-wise uncertainty from Monte Carlo dropout ({mc} forward passes); case-level review threshold selected on the validation set and frozen.</p>
+<h3>2. Findings</h3>{''.join(fnd)}
+<h3>3. Measurements</h3><table><tr><th>Region</th><th class='n'>Volume (mL)</th><th class='n'>Mean uncertainty (0 to 1)</th></tr>{mrows}</table>
+<h3>4. Reliability</h3>{rel}
+<h3>5. Quality control</h3><table><tr><th style="width:70px">Severity</th><th style="width:170px">Check</th><th style="width:110px">Location</th><th>Detail</th></tr>{qrows}</table>
+<p class="cap">Input checks: {len(q.checks) - len(bad)} of {len(q.checks)} passed.</p>
+<h3>6. Figures</h3>{figs}
+<h3>7. Impression</h3><ol>{''.join(f'<li>{x}</li>' for x in imp)}</ol>
+<div class="sign"><div>Reviewed by</div><div>Signature</div><div>Date</div></div>
+<div class="ft">Generated by NeuroScope, a research prototype. Not a medical device and not for diagnostic use. Trained on adult glioma (BraTS 2020); not validated on other tumour types,
+scanners, paediatric or post-operative imaging. Uncertainty reflects model disagreement and does not guarantee correctness. Report {rid}.</div>
 </div></body></html>"""
