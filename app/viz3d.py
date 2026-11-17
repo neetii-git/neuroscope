@@ -99,6 +99,15 @@ def brain_html(vol: np.ndarray, labels: Optional[np.ndarray] = None, entropy: Op
  .vol{{font-weight:500;color:#E5E7EB;margin-left:5px}} .tag{{position:absolute;transform:translate(-50%,-130%);background:rgba(11,18,32,.82);border:1px solid #334155;border-radius:7px;padding:3px 8px;font-size:11px;color:#E5E7EB;cursor:pointer;white-space:nowrap;pointer-events:auto}} .tag:hover{{border-color:#F5C518}}
  .lg{{cursor:pointer;user-select:none}} .lg:not(.on){{opacity:.35;text-decoration:line-through}} #cutw{{display:inline-flex;align-items:center;gap:6px}} #cut{{width:120px;accent-color:#F5C518}}
  #hint{{position:absolute;right:16px;bottom:12px;color:#64748B;font-size:11px}}
+ .lg,#cutw{{white-space:nowrap}}
+ @media (max-width:900px){{#hint{{display:none}}}}
+ @media (max-width:640px){{
+  #ov{{left:14px;right:14px;top:12px}} #ov h1{{font-size:22px}} #ov p{{font-size:12px;max-width:none;margin-top:4px}}
+  #bar{{left:8px;right:8px;top:auto;bottom:58px;max-width:none;justify-content:center;gap:5px}}
+  #bar button{{padding:5px 8px;font-size:11px}}
+  #leg{{left:8px;right:8px;bottom:8px;flex-wrap:wrap;justify-content:center;gap:4px 12px;font-size:11px}}
+  #cut{{width:84px}} #hint{{display:none}} .tag{{font-size:10px;padding:2px 6px}}
+ }}
 </style></head><body>
 <canvas id="c"></canvas>
 <div id="ov"><h1>{title}</h1><p>{subtitle}</p></div>
@@ -130,7 +139,7 @@ const scene=new THREE.Scene(); renderer.setClearColor(0x000000,0);
 const cam=new THREE.PerspectiveCamera(38,1,1,5000);
 const ctr=new THREE.OrbitControls(cam,canvas); ctr.enableDamping=true; ctr.dampingFactor=0.08; ctr.autoRotate={'true' if autorotate else 'false'}; ctr.autoRotateSpeed=0.9;
 const cx=W/2,cy=H/2,cz=D/2, R=Math.max(D,H,W);
-function resetCam(){{cam.position.set(cx+R*0.95,cy-R*1.1,cz+R*0.6);cam.up.set(0,0,1);ctr.target.set(cx,cy,cz);ctr.update();}}
+function resetCam(){{const a=(canvas.clientWidth||innerWidth)/(canvas.clientHeight||innerHeight),k=a<1?Math.min(1.9,0.95/a):1;cam.position.set(cx+R*0.95*k,cy-R*1.1*k,cz+R*0.6*k);cam.up.set(0,0,1);ctr.target.set(cx,cy,cz);ctr.update();}}
 resetCam();
 function circleTex(){{const c=document.createElement('canvas');c.width=c.height=64;const g=c.getContext('2d');const r=g.createRadialGradient(32,32,0,32,32,32);r.addColorStop(0,'rgba(255,255,255,1)');r.addColorStop(0.4,'rgba(255,255,255,.55)');r.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=r;g.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);}}
 const tex=circleTex();
@@ -193,7 +202,9 @@ function placeTags(){{const w=canvas.clientWidth,h=canvas.clientHeight;Object.ke
 on('bFocus',()=>{{const r=REG[1].k?REG[1]:(REG[3].k?REG[3]:REG[2]);if(r.k)flyTo(r.c,Math.max(60,Math.cbrt(r.k)*{tumour_step}*6));}});
 on('bShot',()=>{{renderer.render(scene,cam);const a=document.createElement('a');a.download='neuroscope_3d.png';a.href=renderer.domElement.toDataURL('image/png');a.click();}});
 
-function resize(){{const w=canvas.clientWidth||window.innerWidth,h=canvas.clientHeight||window.innerHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();}}
+function fitUI(){{const b=document.getElementById('bar'),l=document.getElementById('leg');b.style.bottom=innerWidth<=640?(l.offsetHeight+16)+'px':'';}}
+setInterval(fitUI,400);
+function resize(){{fitUI();const w=canvas.clientWidth||window.innerWidth,h=canvas.clientHeight||window.innerHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();}}
 window.addEventListener('resize',resize);
 (function loop(){{resize();stepFly();ctr.update();placeTags();renderer.render(scene,cam);requestAnimationFrame(loop);}})();
 </script></body></html>"""

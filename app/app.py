@@ -118,6 +118,22 @@ div[data-testid="stPlotlyChart"] {box-shadow: 0 14px 28px -16px #000; border: 1p
 div[data-testid="stAlert"] {border-radius: 12px;}
 div[data-testid="stExpander"], div[data-testid="stTable"], div[data-testid="stDataFrame"] {background: #141517e6; border-radius: 14px;}
 @media (prefers-reduced-motion: reduce) {* {transition: none !important;}}
+@media (max-width: 640px) {
+  .block-container {padding: 3.6rem 0.85rem 2.5rem !important;}
+  header[data-testid="stHeader"] {background: #0E0F11eb !important; height: 3rem; min-height: 3rem; box-shadow: 0 6px 14px -8px #000; z-index: 999 !important;}
+  h1 {font-size: 2rem !important;} h2 {font-size: 1.45rem !important;} h3 {font-size: 1.2rem !important;}
+  div[data-testid="stMetric"] {padding: 10px 14px;}
+  div[data-testid="stMetricValue"] {font-size: 1.75rem !important;}
+  div[data-testid="stTable"], div[data-testid="stDataFrame"], div[data-testid="stMarkdownContainer"] table {display: block; overflow-x: auto; max-width: 100%;}
+  div[data-testid="stTabs"] [role="tablist"] {overflow-x: auto; scrollbar-width: none; gap: 18px;}
+  .modebar-container {display: none !important;}
+  div[data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar {display: none;}
+  div[data-testid="stTabs"] button[role="tab"] {white-space: nowrap; padding: 0 10px; flex: 0 0 auto;}
+  section[data-testid="stSidebar"] {max-width: 88vw;}
+}
+@media (hover: none) {
+  div[data-testid="stMetric"], .stButton > button:hover, .stDownloadButton > button:hover, div[data-testid="stTabs"] button[role="tab"]:hover {transform: none !important;}
+}
 </style>
 """
 
@@ -125,7 +141,7 @@ TILT_JS = """
 <script>
 try {
   const d = window.parent.document;
-  if (!d.__nsTilt) {
+  if (!d.__nsTilt && !(window.parent.matchMedia && window.parent.matchMedia('(hover: none)').matches)) {
     d.__nsTilt = true;
     let pend = null;
     d.addEventListener('mousemove', ev => { if (pend) { pend = ev; return; } pend = ev; requestAnimationFrame(() => { const e = pend; pend = null;
@@ -152,8 +168,15 @@ def _bg_script() -> str:
 
 
 def dark(fig: go.Figure, h: int = 420) -> go.Figure:
-    fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(23,24,27,0.78)", plot_bgcolor="rgba(0,0,0,0)", height=h,
-                      margin=dict(l=10, r=10, t=36, b=10), font=dict(color="#ECECEA", family="Inter, Segoe UI, sans-serif"))
+    top_legend = fig.layout.legend.y is not None and fig.layout.legend.y > 1
+    has_title = bool(fig.layout.title.text)
+    t = (84 if has_title else 56) if top_legend else 36
+    fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(23,24,27,0.78)", plot_bgcolor="rgba(0,0,0,0)", height=h + (t - 36),
+                      margin=dict(l=10, r=10, t=t, b=10), font=dict(color="#ECECEA", family="Inter, Segoe UI, sans-serif"))
+    if top_legend:
+        fig.update_layout(legend=dict(orientation="h", y=1.0, yanchor="bottom", x=0, xanchor="left", bgcolor="rgba(0,0,0,0)"))
+    if has_title:
+        fig.update_layout(title=dict(yref="container", y=1, yanchor="top", pad=dict(t=12)))
     fig.update_xaxes(gridcolor="#2C2E33", zerolinecolor="#2C2E33"); fig.update_yaxes(gridcolor="#2C2E33", zerolinecolor="#2C2E33")
     return fig
 
@@ -486,7 +509,7 @@ def fig_slice_profile(res, z_cur: int):
     fig = go.Figure()
     fig.add_trace(go.Bar(x=np.arange(D), y=area, name="Tumour volume per slice (mL)", marker_color=GREEN, opacity=0.55))
     fig.add_trace(go.Scatter(x=np.arange(D), y=ent, name="Mean uncertainty in brain", yaxis="y2", line=dict(color=ACCENT, width=2)))
-    fig.add_vline(x=z_cur, line=dict(color="#ECECEA", dash="dot"), annotation_text=f"slice {z_cur}", annotation_position="top")
+    fig.add_vline(x=z_cur, line=dict(color="#ECECEA", dash="dot"), annotation_text=f"slice {z_cur}", annotation_position="bottom right")
     fig.update_layout(title=dict(text="Per-slice profile", x=0.02, font=dict(size=14)), xaxis_title="axial slice",
                       yaxis=dict(title="mL"), yaxis2=dict(title="entropy", overlaying="y", side="right", showgrid=False),
                       legend=dict(orientation="h", y=1.12), barmode="overlay")
@@ -529,7 +552,7 @@ def fig_subsets(sub: pd.DataFrame):
     fig = go.Figure()
     for col, nm, c in [("dice_WT", "Whole tumour", REGION_HEX[0]), ("dice_TC", "Tumour core", REGION_HEX[1]), ("dice_ET", "Enhancing", REGION_HEX[2])]:
         fig.add_trace(go.Bar(y=sub["subset"].str.upper(), x=sub[col], name=nm, orientation="h", marker_color=c))
-    fig.update_layout(title=dict(text="Test Dice for every combination of input sequences", x=0.02, font=dict(size=14)),
+    fig.update_layout(title=dict(text="Test Dice for each sequence combination", x=0.02, font=dict(size=14)),
                       barmode="group", xaxis=dict(range=[0, 1], title="Dice"), legend=dict(orientation="h", y=1.08))
     return dark(fig, 560)
 
@@ -543,7 +566,7 @@ def fig_ablation(abl: Dict) -> go.Figure:
     fig = go.Figure()
     fig.add_trace(go.Bar(x=[f"{n} sequence" + ("s" if n != "1" else "") for n in ns], y=[w[n]["WT"] for n in ns], name="With modality dropout", marker_color=GREEN))
     fig.add_trace(go.Bar(x=[f"{n} sequence" + ("s" if n != "1" else "") for n in ns], y=[wo[n]["WT"] for n in ns], name="Without modality dropout", marker_color=ACCENT))
-    fig.update_layout(title=dict(text="Whole-tumour Dice by number of sequences available (mean over subsets)", x=0.02, font=dict(size=14)),
+    fig.update_layout(title=dict(text="Whole-tumour Dice by number of sequences", x=0.02, font=dict(size=14)),
                       barmode="group", yaxis=dict(range=[0, 1], title="Dice"), legend=dict(orientation="h", y=1.1))
     return dark(fig, 360)
 
@@ -1010,18 +1033,12 @@ else:
         else:
             st.caption("Each separate region the model predicted. Small isolated regions are a common source of false positives. "
                        "Tick Reject to remove a region; volumes, 3D views, measurements and the report update.")
-            hdr = st.columns([0.7, 0.6, 1, 1.4, 1.1, 2.2])
-            for c_, t_ in zip(hdr, ["Reject", "#", "Volume", "Slices", "Uncertainty", "Composition (mL)"]):
-                c_.markdown(f"<span style='color:#A3A5AA;font-size:13px'>{t_}</span>", unsafe_allow_html=True)
             for c in comps[:12]:
-                row = st.columns([0.7, 0.6, 1, 1.4, 1.1, 2.2])
-                row[0].checkbox("Reject", key=f"rej_{_tok}_{c['id']}", label_visibility="collapsed", disabled=(c["rank"] == 1 and len(comps) == 1))
-                row[1].write(f"{c['rank']}" + (" (main)" if c["rank"] == 1 else ""))
-                row[2].write(f"{c['ml']:.2f} mL")
-                row[3].write(f"{c['slices'][0]} to {c['slices'][1]}")
-                row[4].write(f"{c['mean_u']:.2f}")
                 comp = c["composition"]
-                row[5].write(f"core {comp[1]:.2f}, enh {comp[3]:.2f}, edema {comp[2]:.2f}")
+                st.checkbox(f"**Reject region {c['rank']}{' (main)' if c['rank'] == 1 else ''}**  \n"
+                            f"{c['ml']:.2f} mL, slices {c['slices'][0]} to {c['slices'][1]}, uncertainty {c['mean_u']:.2f}. "
+                            f"Core {comp[1]:.2f}, enhancing {comp[3]:.2f}, edema {comp[2]:.2f} mL",
+                            key=f"rej_{_tok}_{c['id']}", disabled=(c["rank"] == 1 and len(comps) == 1))
             if len(comps) > 12:
                 st.caption(f"{len(comps) - 12} further regions not shown.")
             if st.button("Restore all regions"):
