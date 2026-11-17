@@ -1259,4 +1259,4 @@ human-in-the-loop review, not a diagnostic device.
         st.session_state.result = None
         st.rerun()
 
-st.caption("NeuroScope. Research prototype built on BraTS 2020. Not a medical device.")
+st.caption("NeuroScope © 2026 Neeti Soni. All rights reserved. Research prototype built on BraTS 2020. Not a medical device.")

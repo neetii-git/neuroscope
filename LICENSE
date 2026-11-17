@@ -1,0 +1,25 @@
+Copyright (c) 2026 Neeti Soni. All rights reserved.
+
+NeuroScope (the source code, trained model weights, figures, report templates,
+documentation and website in this repository) is the work of Neeti Soni.
+
+You may view this repository and use the live demo for evaluation, academic
+review and hiring purposes.
+
+You may NOT, without prior written permission from the author:
+  - copy, modify, merge, publish or redistribute the code or model weights,
+    in whole or in part;
+  - submit this work, or any part of it, as your own project, thesis,
+    assignment or paper;
+  - use it in a commercial product or service.
+
+Forking on GitHub does not grant any of the rights above.
+
+Third-party components keep their own licences: three.js and OrbitControls
+(app/vendor/, MIT licence) and the Python packages listed in requirements.txt.
+The BraTS 2020 dataset is subject to its own terms of use.
+
+NeuroScope is a research prototype and not a medical device. It is provided
+"as is", without warranty of any kind.
+
+For permission requests, contact the author through GitHub (@neetii-git).
