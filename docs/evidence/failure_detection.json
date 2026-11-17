@@ -1,0 +1,102 @@
+{
+  "threshold_from_validation": 0.15902796387672424,
+  "bootstrap": "2000 patient-level resamples, 95% percentile intervals",
+  "full_sequences": {
+    "n_patients": 74,
+    "n_failures": 3,
+    "auroc": [
+      0.9530516431924883,
+      0.875,
+      1.0,
+      1914
+    ],
+    "spearman_rho_uncertainty_vs_dice": [
+      -0.6973269159570528,
+      -0.8148858568203575,
+      -0.5371523747684072,
+      2000
+    ],
+    "flag_caught": "2 of 3",
+    "flag_rate": 0.08108108108108109
+  },
+  "all_sequence_sets": {
+    "n_rows": 1110,
+    "n_patients": 74,
+    "n_failures": 208,
+    "failure_rate": 0.1873873873873874,
+    "auroc_uncertainty": [
+      0.9540604212860311,
+      0.9359547879626412,
+      0.971007564322402,
+      2000
+    ],
+    "auroc_baseline_number_of_missing_sequences": [
+      0.7058459832850077,
+      0.6624986276548399,
+      0.7571211290202076,
+      2000
+    ],
+    "auroc_baseline_small_predicted_volume": [
+      0.8243300144976974,
+      0.7462698412232541,
+      0.8875274785629194,
+      2000
+    ],
+    "auroc_within_each_sequence_set": [
+      0.9576907957156137,
+      0.9292295219704207,
+      0.979662508837516,
+      2000
+    ],
+    "spearman_rho_uncertainty_vs_dice": [
+      -0.8845223228276624,
+      -0.9105558968344675,
+      -0.8481679563811271,
+      2000
+    ],
+    "aurc_uncertainty": 0.09615021663249133,
+    "aurc_random": 0.18148952951074393,
+    "aurc_oracle": 0.08610340876731955,
+    "frozen_threshold": {
+      "flag_rate": 0.3153153153153153,
+      "sensitivity": [
+        0.9182692307692307,
+        0.8522031960779691,
+        0.9750152439024389,
+        2000
+      ],
+      "specificity": [
+        0.8237250554323725,
+        0.7922644996089709,
+        0.8540376867550781,
+        2000
+      ],
+      "dice_accepted": 0.8949519915540869,
+      "dice_flagged": 0.6525231676056236,
+      "failures_caught": "191 of 208",
+      "failures_missed": 17
+    }
+  },
+  "failure_definition_sensitivity": {
+    "0.6": {
+      "failures": 101,
+      "auroc": 0.9627412691715158
+    },
+    "0.7": {
+      "failures": 164,
+      "auroc": 0.9561117413499717
+    },
+    "0.75": {
+      "failures": 208,
+      "auroc": 0.9540604212860311
+    },
+    "0.8": {
+      "failures": 309,
+      "auroc": 0.9645386632405286
+    },
+    "0.85": {
+      "failures": 448,
+      "auroc": 0.9549255502805352
+    }
+  }
+}

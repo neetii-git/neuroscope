@@ -86,10 +86,37 @@ def count_parameters(model: nn.Module) -> int:
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-def build_model(cfg: dict) -> UNet2D:
-    return UNet2D(
-        in_channels=4,
-        out_channels=3,
-        base=int(cfg.get("base_channels", 32)),
-        dropout=float(cfg.get("dropout", 0.2)),
-    )
+class _MonaiWrapper(nn.Module):
+    """Wraps a MONAI 2D network so it exposes the same interface as UNet2D."""
+
+    def __init__(self, net: nn.Module):
+        super().__init__()
+        self.net = net
+
+    def forward(self, x):
+        return self.net(x)
+
+    def enable_mc_dropout(self) -> None:
+        self.eval()
+        for m in self.modules():
+            if isinstance(m, (nn.Dropout, nn.Dropout2d)):
+                m.train()
+
+
+def build_model(cfg: dict) -> nn.Module:
+    """arch: "unet" (NeuroScope, default) | "attention_unet" | "segresnet" (MONAI baselines)."""
+    arch = cfg.get("arch", "unet")
+    base = int(cfg.get("base_channels", 32))
+    p = float(cfg.get("dropout", 0.2))
+    if arch == "unet":
+        return UNet2D(in_channels=4, out_channels=3, base=base, dropout=p)
+    if arch == "attention_unet":  # Oktay et al., 2018
+        from monai.networks.nets import AttentionUnet
+        return _MonaiWrapper(AttentionUnet(spatial_dims=2, in_channels=4, out_channels=3,
+                                           channels=(base, base * 2, base * 4, base * 8, base * 16),
+                                           strides=(2, 2, 2, 2), dropout=p))
+    if arch == "segresnet":  # Myronenko, 2018 (BraTS 2018 winner), 2D variant
+        from monai.networks.nets import SegResNet
+        return _MonaiWrapper(SegResNet(spatial_dims=2, init_filters=base, in_channels=4, out_channels=3,
+                                       dropout_prob=p, blocks_down=(1, 2, 2, 4), blocks_up=(1, 1, 1)))
+    raise ValueError(f"unknown arch {arch}")

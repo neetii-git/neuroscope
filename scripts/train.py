@@ -71,6 +71,7 @@ def main():
     ap.add_argument("--max-slices-per-epoch", type=int, default=None)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--smoke", action="store_true", help="tiny run for testing the pipeline")
+    ap.add_argument("--arch", default=None, choices=["unet", "attention_unet", "segresnet"], help="baseline architectures for comparison")
     args = ap.parse_args()
 
     with open(args.config) as f:
@@ -81,6 +82,8 @@ def main():
         cfg["train"]["batch_size"] = args.batch_size
     if args.max_slices_per_epoch is not None:
         cfg["train"]["max_slices_per_epoch"] = args.max_slices_per_epoch
+    if args.arch is not None:
+        cfg["model"]["arch"] = args.arch
     if args.no_modality_dropout:
         cfg["data"]["modality_dropout_p"] = 0.0
     if args.smoke:
