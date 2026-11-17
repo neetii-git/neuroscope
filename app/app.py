@@ -31,6 +31,9 @@ from neuroscope.quality.iqa import assess_case  # noqa: E402
 import streamlit.components.v1 as components  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from viz3d import brain_html
+
+# Changes to the 3D viewer's file must invalidate cached viewer HTML (the cache survives hot reloads).
+VIZ_VERSION = __import__("hashlib").md5(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "viz3d.py"), "rb").read()).hexdigest()
 from report import analyse, build_figures, gray_volume, rano_panel, report_html  # noqa: E402
 from clinical import apply_rejections, bidimensional, response_category, simulate_prior
 from clinical import components as find_components  # noqa: E402
@@ -711,7 +714,7 @@ hist_df = load_csv(os.path.join(os.path.dirname(os.path.abspath(ckpt_path)), "hi
 _landing = st.session_state.get("result") is None and not st.session_state.get("dicom") and not (use_demo or run or dicom_read)
 if _landing and os.path.isdir(ARGS.demo_dir):
     @st.cache_data(show_spinner=False)
-    def _hero_html(demo_dir: str) -> str:
+    def _hero_html(demo_dir: str, viz_version: str = "") -> str:
         vols, _ = load_demo_case(demo_dir)
         key = "flair" if "flair" in vols else next(k for k in vols if k != "seg")
         v = np.transpose(np.asarray(vols[key], np.float32), (2, 1, 0))
@@ -720,7 +723,7 @@ if _landing and os.path.isdir(ARGS.demo_dir):
                           subtitle="Brain tumour segmentation from MRI with a built-in measure of how much to trust each result. "
                                    "Shown: the example patient's FLAIR scan with the expert annotation. Load the example patient to see what the model finds.",
                           autorotate=True, show_controls=True)
-    components.html(_hero_html(ARGS.demo_dir), height=600, scrolling=False)
+    components.html(_hero_html(ARGS.demo_dir, viz_version=VIZ_VERSION), height=600, scrolling=False)
     st.caption("Every point is a voxel of the real scan, rendered in your browser. Drag to rotate, scroll to zoom. Research prototype, not a medical device.")
 else:
     st.title("NeuroScope")
@@ -973,11 +976,11 @@ else:
                        "Uncertainty recolours the tumour: bright white where the repeated runs disagreed. Every point is a voxel of this patient's scan.")
         with g1:
             @st.cache_data(show_spinner=False)
-            def _gl_html(src: str, mod: str, z: Optional[int], mc_: int, tok: float):
+            def _gl_html(src: str, mod: str, z: Optional[int], mc_: int, tok: float, viz_version: str = ""):
                 return brain_html(img[MODALITIES.index(mod)], pred.labels, pred.entropy, brain_step=3, tumour_step=1, height=620,
                                   title="", subtitle="", slice_z=z, autorotate=True, show_controls=True,
                                   volumes={k: float((pred.labels == k).sum()) * res["voxel_ml"] for k in (1, 2, 3)})
-            components.html(_gl_html(st.session_state.source, gl_mod, st.session_state.z if gl_plane else None, pred.mc_samples, res["token"]), height=620, scrolling=False)
+            components.html(_gl_html(st.session_state.source, gl_mod, st.session_state.z if gl_plane else None, pred.mc_samples, res["token"], VIZ_VERSION), height=620, scrolling=False)
 
     with tab_slices:
         a, b = st.columns([1, 2.2])
