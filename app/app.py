@@ -705,6 +705,75 @@ with st.sidebar:
         results_dir = st.text_input("Results dir", ARGS.results)
 
 summary = load_json(os.path.join(results_dir, "summary.json"))
+EVID = load_json(os.path.join(ROOT, "docs", "evidence", "failure_detection.json")) or {}
+EVID_DIR = os.path.join(ROOT, "docs", "evidence")
+EVID2 = load_json(os.path.join(EVID_DIR, "evidence.json")) or {}
+REPORT_URL = "https://github.com/neetii-git/neuroscope/blob/main/docs/TECHNICAL_REPORT.md"
+
+
+def _ci(t, nd=3):
+    try:
+        return f"{t[0]:.{nd}f} ({t[1]:.{nd}f} to {t[2]:.{nd}f})"
+    except Exception:  # noqa: BLE001
+        return "n/a"
+
+
+def render_evidence():
+    """Evidence section: failure detection under missing sequences, uncertainty baselines, calibration, external test."""
+    if not EVID:
+        return
+    st.markdown("#### Evidence")
+    st.caption(f"Full protocol, statistics and limitations: [technical report]({REPORT_URL}). Confidence intervals resample patients, not rows.")
+    a = EVID["all_sequence_sets"]; ft = a["frozen_threshold"]
+    st.markdown("**Does the self-check still work when sequences are missing?** The 74 test patients were run with every one of the "
+                f"15 sequence combinations ({a['n_rows']:,} cases, {a['n_failures']} failures with whole-tumour Dice below 0.75).")
+    e1, e2, e3, e4 = st.columns(4)
+    e1.metric("Failure AUROC", f"{a['auroc_uncertainty'][0]:.3f}", help=f"95% CI {a['auroc_uncertainty'][1]:.3f} to {a['auroc_uncertainty'][2]:.3f}")
+    e2.metric("Failures flagged", ft["failures_caught"].replace(" of ", " / "), help="Threshold fixed on the validation set")
+    e3.metric("Good cases passed", f"{100*ft['specificity'][0]:.0f}%", help="Specificity of the flag")
+    e4.metric("Dice, accepted vs flagged", f"{ft['dice_accepted']:.2f} / {ft['dice_flagged']:.2f}")
+    st.dataframe(pd.DataFrame([
+        {"Ranking score": "Number of missing sequences (trivial)", "Failure AUROC (95% CI)": _ci(a["auroc_baseline_number_of_missing_sequences"])},
+        {"Ranking score": "Small predicted tumour (trivial)", "Failure AUROC (95% CI)": _ci(a["auroc_baseline_small_predicted_volume"])},
+        {"Ranking score": "NeuroScope uncertainty", "Failure AUROC (95% CI)": _ci(a["auroc_uncertainty"])},
+        {"Ranking score": "NeuroScope uncertainty, within each sequence set", "Failure AUROC (95% CI)": _ci(a["auroc_within_each_sequence_set"])},
+    ]).set_index("Ranking score"), width="stretch")
+    bys = os.path.join(EVID_DIR, "failure_detection_by_sequences.csv")
+    if os.path.exists(bys):
+        b = pd.read_csv(bys).rename(columns={"sequences_available": "Sequences", "rows": "Cases", "failures": "Failures", "dice_WT": "Dice WT",
+                                             "auroc": "AUROC", "flag_rate": "Flagged", "caught": "Caught", "dice_accepted": "Dice of accepted"})
+        b["Flagged"] = (100 * b["Flagged"]).round(0).astype(int).astype(str) + "%"
+        st.dataframe(b.set_index("Sequences").round(3), width="stretch")
+    um = EVID2.get("uncertainty_methods")
+    if um:
+        st.markdown("**Which uncertainty method?** Same trained model, internal test set, all 15 sequence sets.")
+        t = pd.DataFrame([r for r in um if r["cohort"] == "test"])
+        if not t.empty:
+            t["Failure AUROC (95% CI)"] = t.apply(lambda r: f"{r['auroc']:.3f} ({r['auroc_lo']:.3f} to {r['auroc_hi']:.3f})", axis=1)
+            cols = {"label": "Method", "dice_WT_full": "Dice WT (4 seq)", "Failure AUROC (95% CI)": "Failure AUROC (95% CI)", "aurc": "AURC", "infer_s_mean": "Seconds per scan (T4 GPU)"}
+            st.dataframe(t[list(cols)].rename(columns=cols).set_index("Method").round(3), width="stretch")
+    for coh, title in [("test", "internal test"), ("external", "BraTS-Africa")]:
+        fp = os.path.join(EVID_DIR, f"fig_calibration_{coh}.png")
+        if os.path.exists(fp):
+            st.image(fp, caption=f"Voxel calibration, {title}: points on the diagonal mean a predicted probability of p is right p of the time")
+    ext = EVID2.get("external")
+    if ext:
+        d = ext["dice_full"]
+        st.markdown(f"**External test: BraTS-Africa** ({ext['n_patients']} patients from Sub-Saharan Africa, never used in training). "
+                    f"Whole-tumour Dice {_ci(d['dice_WT'])}, core {_ci(d['dice_TC'])}, enhancing {_ci(d['dice_ET'])}.")
+        er = [r for r in (um or []) if r["cohort"] == "external" and r["method"] == "mc8"]
+        if er:
+            r = er[0]
+            st.markdown(f"Self-check on this cohort, all 15 sequence sets, same frozen threshold: failure AUROC {r['auroc']:.3f} "
+                        f"({r['auroc_lo']:.3f} to {r['auroc_hi']:.3f}); flagged {r.get('caught', 'n/a')} failures.")
+    arch = EVID2.get("architectures")
+    if arch and len(arch) > 1:
+        st.markdown("**Architecture comparison** (identical split, loss, epochs and modality dropout; only the network differs).")
+        ad = pd.DataFrame(arch)
+        keep = {"model": "Model", "dice_WT": "Dice WT", "dice_TC": "Dice TC", "dice_ET": "Dice ET", "hd95_WT": "HD95 WT (mm)",
+                "dice_WT_1seq": "Dice WT, 1 seq", "dice_WT_2seq": "Dice WT, 2 seq"}
+        st.dataframe(ad[[k for k in keep if k in ad]].rename(columns=keep).set_index("Model").round(3), width="stretch")
+
 thr = load_json(os.path.join(results_dir, "threshold.json"))
 test_df = load_csv(os.path.join(results_dir, "test_per_case.csv"))
 sub_df = load_csv(os.path.join(results_dir, "subsets.csv"))
@@ -737,10 +806,18 @@ if summary:
     inf, _ = ci_txt(summary.get("infer_s"))
     c = st.columns(4)
     if simple:
-        c[0].metric("Overlap with expert outlines", f"{100*dwt:.0f}%", help=f"Dice, whole tumour, on {n_test} test patients never seen in training")
-        c[1].metric("Poor outlines caught by the confidence score", f"{100*rel.get('failure_auroc', float('nan')):.0f}%", help="AUROC of case uncertainty for detecting WT Dice < 0.75")
-        c[2].metric("Sequence combinations supported", "15 of 15", help="Any subset of T1, T1ce, T2, FLAIR")
-        c[3].metric("Time per patient on GPU", f"{inf:.1f} s" if inf else "n/a", help="Including the repeated runs used for the confidence estimate")
+        c[0].metric("Dice score, whole tumour", f"{dwt:.2f}",
+                    help=f"Overlap with the expert outline (0 to 1) on {n_test} test patients never used in training. {dwt_ci}.")
+        pooled = EVID.get("all_sequence_sets", {}).get("frozen_threshold", {})
+        if pooled.get("failures_caught"):
+            c[1].metric("Poor outlines flagged for review", pooled["failures_caught"].replace(" of ", " / "),
+                        help="Outlines with whole-tumour Dice below 0.75, across 74 test patients and all 15 sequence combinations. "
+                             f"Review threshold fixed on the validation set beforehand. Flag specificity {pooled['specificity'][0]:.2f}.")
+        else:
+            c[1].metric("Failure-detection AUROC", f"{rel.get('failure_auroc', float('nan')):.2f}", help="Ranking quality of the uncertainty score for outlines with Dice below 0.75")
+        c[2].metric("Sequence combinations tested", "15 of 15", help="Every subset of T1, T1ce, T2 and FLAIR, on the same 74 test patients")
+        c[3].metric("Time per patient", f"{inf:.1f} s GPU" if inf else "n/a",
+                    help="Measured on a Kaggle cloud GPU with 8 Monte Carlo passes. The free CPU server behind this demo takes about 45 s.")
     else:
         c[0].metric("Test Dice  WT / TC / ET", f"{dwt:.3f} / {dtc:.3f} / {det:.3f}", help=f"n = {n_test}; WT {dwt_ci}")
         c[1].metric("Failure-detection AUROC", f"{rel.get('failure_auroc', float('nan')):.3f}", help=f"Spearman rho = {rel.get('spearman_rho', float('nan')):.2f}; AURC {rel.get('aurc', float('nan')):.3f}")
@@ -1222,7 +1299,8 @@ else:
                 "Its value shows when sequences are missing: with one sequence the dropout-trained model reaches whole-tumour Dice "
                 f"{ABLATION['with_modality_dropout_by_n_sequences']['1']['WT']:.2f} against {ABLATION['no_modality_dropout_by_n_sequences']['1']['WT']:.2f} without it, "
                 f"and with two sequences {ABLATION['with_modality_dropout_by_n_sequences']['2']['WT']:.2f} against {ABLATION['no_modality_dropout_by_n_sequences']['2']['WT']:.2f}. "
-                f"Monte Carlo sampling is what powers the review flag: failure AUROC is {mc1['failure_auroc']:.3f} with a single pass and {auc_txt}.")
+                f"Monte Carlo sampling adds only a little to failure detection here: AUROC is {mc1['failure_auroc']:.3f} with a single pass and {auc_txt}. "
+                "Most of the signal is already in the model's own probabilities; the repeated runs mainly give the per-voxel uncertainty map.")
             cols = st.columns(2)
             if hist_df is not None:
                 cols[0].plotly_chart(fig_history(hist_df), width="stretch")
@@ -1231,6 +1309,7 @@ else:
                 cols[1].image(p, caption="Risk-coverage: Dice of accepted cases as the review flag rejects more")
         else:
             st.write("No results/summary.json found. Run scripts/evaluate.py.")
+        render_evidence()
         st.markdown("""
 **Model.** 2D U-Net, 7.8M parameters, trained with modality dropout so it works with any subset of the four sequences.
 Uncertainty from Monte Carlo dropout: the network runs several times and the disagreement (predictive entropy) is measured.
