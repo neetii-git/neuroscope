@@ -68,12 +68,12 @@ footer{border-top:1px solid var(--line);padding:30px 0 50px;color:var(--muted);f
 </head>
 <body>
 <nav><div class="wrap"><a class="logo" href="#">NeuroScope</a>
-<div class="links"><a href="#different">What is different</a><a href="#results">Results</a><a href="#how">How it works</a><a class="keep" href="https://github.com/neetii-git/neuroscope">Source code</a></div></div></nav>
+<div class="links"><a href="#different">What is different</a><a href="#results">Results</a><a href="#how">How it works</a><a href="https://github.com/neetii-git/neuroscope/blob/main/docs/TECHNICAL_REPORT.md">Technical report</a><a class="keep" href="https://github.com/neetii-git/neuroscope">Source code</a></div></div></nav>
 
 <header class="wrap hero">
   <div>
     <h1>Brain tumour segmentation that tells you when not to trust it.</h1>
-    <p class="lead">NeuroScope outlines and measures brain tumours on MRI, then checks its own answer. Uncertain cases are flagged for a specialist. It keeps working when scan sequences are missing, and it reads the scans hospitals give patients.</p>
+    <p class="lead">A decision-support tool for radiologists. NeuroScope outlines and measures brain tumours on MRI in about a minute, tracks exact change between scans, and checks its own answer: uncertain cases are flagged for a specialist. It keeps working when scan sequences are missing.</p>
     <div class="btns">
       <a class="btn p" href="https://neuroscopeapp.streamlit.app">Open the live app</a>
       <a class="btn" href="https://github.com/neetii-git/neuroscope">Source code</a>
@@ -92,8 +92,8 @@ footer{border-top:1px solid var(--line);padding:30px 0 50px;color:var(--muted);f
   <div class="stats">
     <div class="stat"><b>0.90</b><span>Dice, whole tumour (95% CI 0.88 to 0.91)</span></div>
     <div class="stat"><b>0.86 / 0.77</b><span>Dice, tumour core / enhancing tumour</span></div>
-    <div class="stat"><b>0.95</b><span>AUROC for catching poor outlines from the uncertainty score</span></div>
-    <div class="stat"><b>15 of 15</b><span>combinations of the four MRI sequences supported</span></div>
+    <div class="stat"><b>191 / 208</b><span>poor outlines flagged for review across all 15 sequence combinations (AUROC 0.954, 95% CI 0.936 to 0.971)</span></div>
+    <div class="stat"><b>15 of 15</b><span>combinations of the four MRI sequences tested on the same 74 patients</span></div>
   </div>
   <div class="grid3" style="margin-top:22px">
     <figure><img src="img/axial.png" alt="Axial MRI slice with predicted tumour regions overlaid"><figcaption>Axial view, predicted regions</figcaption></figure>
@@ -124,6 +124,10 @@ footer{border-top:1px solid var(--line);padding:30px 0 50px;color:var(--muted);f
     <figure class="wide"><img src="img/fig_risk_coverage.png" alt="Risk coverage curve for the uncertainty-based review flag"><figcaption>Risk-coverage: sending the most uncertain cases for review lowers the error on the cases that remain.</figcaption></figure>
   </div>
   <table>
+    <tr><th>External test</th><th>Patients</th><th>Whole tumour Dice</th><th>Failures flagged (all 15 sequence sets)</th></tr>
+    <tr><td>BraTS-Africa 2023, never used in training</td><td class="n">60</td><td class="n">0.88</td><td class="n">226 of 232</td></tr>
+  </table>
+  <table>
     <tr><th>Ablation (74 test patients)</th><th>Whole tumour Dice, 1 sequence</th><th>2 sequences</th><th>All 4</th></tr>
     <tr><td>With modality dropout</td><td class="n">0.73</td><td class="n">0.83</td><td class="n">0.90</td></tr>
     <tr><td>Without modality dropout</td><td class="n">0.32</td><td class="n">0.60</td><td class="n">0.90</td></tr>
@@ -145,8 +149,8 @@ footer{border-top:1px solid var(--line);padding:30px 0 50px;color:var(--muted);f
 <footer><div class="wrap">
   <p><b style="color:var(--text)">NeuroScope</b> by Neeti Soni, B.Tech CSE (Data Science), SRM Institute of Science and Technology, Kattankulathur.
   <a href="https://neuroscopeapp.streamlit.app">Live app</a> · <a href="https://github.com/neetii-git/neuroscope">Source code</a></p>
-  <p>Research and education tool. Not a medical device and not for diagnosis or treatment decisions. Trained on adult glioma MRI; not validated on other tumour types, scanners or populations.</p>
-  <p>Data: Brain Tumor Segmentation Challenge (BraTS) 2020. Menze et al., IEEE TMI 2015; Bakas et al., Scientific Data 2017; Bakas et al., arXiv:1811.02629.</p>
+  <p>Research and education tool. Not a medical device and not for diagnosis or treatment decisions. Trained on adult glioma MRI (BraTS 2020) and tested on one external cohort (BraTS-Africa); not validated on other tumour types or on raw hospital scans. Full protocol and limitations in the <a href="https://github.com/neetii-git/neuroscope/blob/main/docs/TECHNICAL_REPORT.md">technical report</a>.</p>
+  <p>Data: Brain Tumor Segmentation Challenge (BraTS) 2020 and BraTS-Africa 2023 (Adewole et al., arXiv:2305.19369). Menze et al., IEEE TMI 2015; Bakas et al., Scientific Data 2017; Bakas et al., arXiv:1811.02629.</p>
 </div></footer>
 </body>
 </html>
