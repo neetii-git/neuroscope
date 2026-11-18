@@ -1,0 +1,911 @@
+{
+  "env": {
+    "device": "cuda",
+    "torch": "2.11.0+cu130",
+    "gpu": "Tesla T4",
+    "cpu_threads": 2,
+    "mc": 8,
+    "tta": 8
+  },
+  "temperature": {
+    "WT": 2.517163622153725,
+    "TC": 3.9314688457983893,
+    "ET": 2.336238563532767
+  },
+  "tau_fail": 0.75,
+  "thresholds_from_validation": {
+    "mc1": 0.1433945149183273,
+    "mc8": 0.1577327847480774,
+    "tta8": 0.2366071492433548,
+    "mc1_ts": 0.1433945149183273
+  },
+  "uncertainty_methods": [
+    {
+      "cohort": "test",
+      "method": "mc1",
+      "label": "Single pass (softmax-style)",
+      "dice_WT_full": 0.8990810484473475,
+      "dice_TC_full": 0.8611293974835504,
+      "dice_ET_full": 0.7747553502470454,
+      "n_rows": 1110,
+      "n_failures": 209,
+      "dice_WT_all_sets": 0.8192788682106567,
+      "auroc": 0.9455947405593997,
+      "auroc_lo": 0.9237283451716969,
+      "auroc_hi": 0.9659671621213588,
+      "auroc_full": 0.9436619718309859,
+      "auroc_full_lo": 0.8450704225352113,
+      "auroc_full_hi": 1.0,
+      "n_failures_full": 3,
+      "aurc": 0.0966162565687185,
+      "spearman": -0.8764326601445958,
+      "flag_rate": 0.31891891891891894,
+      "sensitivity": 0.9138755980861244,
+      "specificity": 0.8190899001109878,
+      "dice_accepted": 0.8943628566096602,
+      "caught": "191 of 209",
+      "infer_s_mean": 0.3706863643886807
+    },
+    {
+      "cohort": "test",
+      "method": "mc1_ts",
+      "label": "Single pass + temperature scaling",
+      "dice_WT_full": 0.8990810484473475,
+      "dice_TC_full": 0.8611293974835504,
+      "dice_ET_full": 0.7747553502470454,
+      "n_rows": 1110,
+      "n_failures": 209,
+      "dice_WT_all_sets": 0.8192788682106567,
+      "auroc": 0.932015994986963,
+      "auroc_lo": 0.9060334567392136,
+      "auroc_hi": 0.9550841225102533,
+      "auroc_full": 0.9577464788732394,
+      "auroc_full_lo": 0.8732394366197183,
+      "auroc_full_hi": 1.0,
+      "n_failures_full": 3,
+      "aurc": 0.10059575435119154,
+      "spearman": -0.838830160643689,
+      "flag_rate": NaN,
+      "sensitivity": NaN,
+      "specificity": NaN,
+      "dice_accepted": NaN,
+      "caught": NaN,
+      "infer_s_mean": 0.3706863643886807
+    },
+    {
+      "cohort": "test",
+      "method": "tta8",
+      "label": "Test-time augmentation x8",
+      "dice_WT_full": 0.9040215266512851,
+      "dice_TC_full": 0.8656156698348251,
+      "dice_ET_full": 0.7807266508742028,
+      "n_rows": 1110,
+      "n_failures": 198,
+      "dice_WT_all_sets": 0.822971302476951,
+      "auroc": 0.9536981658692185,
+      "auroc_lo": 0.9312623847499649,
+      "auroc_hi": 0.9729308184385695,
+      "auroc_full": 0.9513888888888888,
+      "auroc_full_lo": 0.8611111111111112,
+      "auroc_full_hi": 1.0,
+      "n_failures_full": 2,
+      "aurc": 0.09273975223792873,
+      "spearman": -0.8763244948645382,
+      "flag_rate": 0.22342342342342342,
+      "sensitivity": 0.8434343434343434,
+      "specificity": 0.9111842105263158,
+      "dice_accepted": 0.8872459867900467,
+      "caught": "167 of 198",
+      "infer_s_mean": 3.0725550836270994
+    },
+    {
+      "cohort": "test",
+      "method": "mc8",
+      "label": "MC dropout x8 (NeuroScope)",
+      "dice_WT_full": 0.8988943834169881,
+      "dice_TC_full": 0.8608967817338806,
+      "dice_ET_full": 0.7745141805087851,
+      "n_rows": 1110,
+      "n_failures": 210,
+      "dice_WT_all_sets": 0.8186590684440705,
+      "auroc": 0.9539894179894179,
+      "auroc_lo": 0.9347838456478252,
+      "auroc_hi": 0.9711928319558506,
+      "auroc_full": 0.9577464788732394,
+      "auroc_full_lo": 0.8901191185229304,
+      "auroc_full_hi": 1.0,
+      "n_failures_full": 3,
+      "aurc": 0.09608566152460249,
+      "spearman": -0.8835787078437747,
+      "flag_rate": 0.32882882882882886,
+      "sensitivity": 0.9285714285714286,
+      "specificity": 0.8111111111111111,
+      "dice_accepted": 0.8962981329500623,
+      "caught": "195 of 210",
+      "infer_s_mean": 3.4145780554762832
+    },
+    {
+      "cohort": "external",
+      "method": "mc1",
+      "label": "Single pass (softmax-style)",
+      "dice_WT_full": 0.8754924611178461,
+      "dice_TC_full": 0.7431127947904295,
+      "dice_ET_full": 0.7348582841554703,
+      "n_rows": 900,
+      "n_failures": 232,
+      "dice_WT_all_sets": 0.7887423311923615,
+      "auroc": 0.9398874664464175,
+      "auroc_lo": 0.9167341785467424,
+      "auroc_hi": 0.9629071927803253,
+      "auroc_full": 0.9490909090909091,
+      "auroc_full_lo": 0.8714080954019034,
+      "auroc_full_hi": 1.0,
+      "n_failures_full": 5,
+      "aurc": 0.10842865093047095,
+      "spearman": -0.9031858893951891,
+      "flag_rate": 0.3522222222222222,
+      "sensitivity": 0.8922413793103449,
+      "specificity": 0.8353293413173652,
+      "dice_accepted": 0.8867206925941077,
+      "caught": "207 of 232",
+      "infer_s_mean": 0.37641527599758573
+    },
+    {
+      "cohort": "external",
+      "method": "mc1_ts",
+      "label": "Single pass + temperature scaling",
+      "dice_WT_full": 0.8754924611178461,
+      "dice_TC_full": 0.7431127947904295,
+      "dice_ET_full": 0.7348582841554703,
+      "n_rows": 900,
+      "n_failures": 232,
+      "dice_WT_all_sets": 0.7887423311923615,
+      "auroc": 0.9244850815610159,
+      "auroc_lo": 0.9010843179186291,
+      "auroc_hi": 0.9491206471159271,
+      "auroc_full": 0.9527272727272728,
+      "auroc_full_lo": 0.8888888888888888,
+      "auroc_full_hi": 1.0,
+      "n_failures_full": 5,
+      "aurc": 0.1078423695273972,
+      "spearman": -0.8684698975363205,
+      "flag_rate": NaN,
+      "sensitivity": NaN,
+      "specificity": NaN,
+      "dice_accepted": NaN,
+      "caught": NaN,
+      "infer_s_mean": 0.37641527599758573
+    },
+    {
+      "cohort": "external",
+      "method": "tta8",
+      "label": "Test-time augmentation x8",
+      "dice_WT_full": 0.8825027479941248,
+      "dice_TC_full": 0.7538324503787046,
+      "dice_ET_full": 0.7480760473530501,
+      "n_rows": 900,
+      "n_failures": 214,
+      "dice_WT_all_sets": 0.7989681038887559,
+      "auroc": 0.9673850848750716,
+      "auroc_lo": 0.9486979289130902,
+      "auroc_hi": 0.9830955385650428,
+      "auroc_full": 0.941358024691358,
+      "auroc_full_lo": 0.8690909090909091,
+      "auroc_full_hi": 0.9927272727272727,
+      "n_failures_full": 6,
+      "aurc": 0.09141549018837393,
+      "spearman": -0.9366346884180887,
+      "flag_rate": 0.33444444444444443,
+      "sensitivity": 0.9392523364485982,
+      "specificity": 0.8542274052478134,
+      "dice_accepted": 0.8967437762097755,
+      "caught": "201 of 214",
+      "infer_s_mean": 3.106088926792145
+    },
+    {
+      "cohort": "external",
+      "method": "mc8",
+      "label": "MC dropout x8 (NeuroScope)",
+      "dice_WT_full": 0.8756546719893464,
+      "dice_TC_full": 0.7440841789849616,
+      "dice_ET_full": 0.7346987045321938,
+      "n_rows": 900,
+      "n_failures": 232,
+      "dice_WT_all_sets": 0.7882394206540438,
+      "auroc": 0.9640137827792691,
+      "auroc_lo": 0.947451876285099,
+      "auroc_hi": 0.9797755204336138,
+      "auroc_full": 0.9567901234567902,
+      "auroc_full_lo": 0.8927469135802469,
+      "auroc_full_hi": 1.0,
+      "n_failures_full": 6,
+      "aurc": 0.09828310322651937,
+      "spearman": -0.9321688869399015,
+      "flag_rate": 0.4088888888888889,
+      "sensitivity": 0.9741379310344828,
+      "specificity": 0.7874251497005988,
+      "dice_accepted": 0.9033357698124589,
+      "caught": "226 of 232",
+      "infer_s_mean": 3.4599870424800447
+    }
+  ],
+  "external": {
+    "n_patients": 60,
+    "dice_full": {
+      "dice_WT": [
+        0.8756546719893464,
+        0.8340489324606971,
+        0.9067282410427298,
+        2000
+      ],
+      "dice_TC": [
+        0.7440841789849616,
+        0.6745692234183037,
+        0.8063173130076268,
+        2000
+      ],
+      "dice_ET": [
+        0.7346987045321938,
+        0.680738303678721,
+        0.782542418001855,
+        2000
+      ]
+    },
+    "by_sequences": [
+      {
+        "n_modalities": 1,
+        "rows": 240,
+        "dice_WT": 0.6843880435180071,
+        "dice_TC": 0.46246334880652956,
+        "dice_ET": 0.24388502539878087,
+        "failures": 115
+      },
+      {
+        "n_modalities": 2,
+        "rows": 360,
+        "dice_WT": 0.8002846847708138,
+        "dice_TC": 0.606616841110014,
+        "dice_ET": 0.43892139712767064,
+        "failures": 82
+      },
+      {
+        "n_modalities": 3,
+        "rows": 240,
+        "dice_WT": 0.8521690887810998,
+        "dice_TC": 0.6816010526601317,
+        "dice_ET": 0.5847809806861333,
+        "failures": 29
+      },
+      {
+        "n_modalities": 4,
+        "rows": 60,
+        "dice_WT": 0.8756546719893465,
+        "dice_TC": 0.7440841789849615,
+        "dice_ET": 0.7346987045321937,
+        "failures": 6
+      }
+    ]
+  },
+  "internal_rerun_full": {
+    "dice_WT": 0.8988943834169881,
+    "dice_TC": 0.8608967817338806,
+    "dice_ET": 0.7745141805087851
+  },
+  "calibration": [
+    {
+      "cohort": "test",
+      "subsets": "missing",
+      "method": "mc1",
+      "region": "WT",
+      "n_voxels": 1497067852,
+      "ece": 0.016223797800267347,
+      "ece_above_0.067": 0.08742905692330821,
+      "brier": 0.018440932180217594
+    },
+    {
+      "cohort": "test",
+      "subsets": "missing",
+      "method": "mc1",
+      "region": "TC",
+      "n_voxels": 1497067852,
+      "ece": 0.011239108073300592,
+      "ece_above_0.067": 0.13734738072304886,
+      "brier": 0.011946102836248054
+    },
+    {
+      "cohort": "test",
+      "subsets": "missing",
+      "method": "mc1",
+      "region": "ET",
+      "n_voxels": 1497067852,
+      "ece": 0.00790419572609908,
+      "ece_above_0.067": 0.2346120497288211,
+      "brier": 0.008284141960485053
+    },
+    {
+      "cohort": "test",
+      "subsets": "missing",
+      "method": "tta8",
+      "region": "WT",
+      "n_voxels": 1497067852,
+      "ece": 0.013004887195931434,
+      "ece_above_0.067": 0.061279078408137885,
+      "brier": 0.016963624296472742
+    },
+    {
+      "cohort": "test",
+      "subsets": "missing",
+      "method": "tta8",
+      "region": "TC",
+      "n_voxels": 1497067852,
+      "ece": 0.008716384954856424,
+      "ece_above_0.067": 0.09497006201767921,
+      "brier": 0.01071821827310317
+    },
+    {
+      "cohort": "test",
+      "subsets": "missing",
+      "method": "tta8",
+      "region": "ET",
+      "n_voxels": 1497067852,
+      "ece": 0.006910073163660515,
+      "ece_above_0.067": 0.1819154521877519,
+      "brier": 0.007734209075670408
+    },
+    {
+      "cohort": "test",
+      "subsets": "missing",
+      "method": "mc8",
+      "region": "WT",
+      "n_voxels": 1497067852,
+      "ece": 0.015482282610450126,
+      "ece_above_0.067": 0.08125275287897088,
+      "brier": 0.018172366454231367
+    },
+    {
+      "cohort": "test",
+      "subsets": "missing",
+      "method": "mc8",
+      "region": "TC",
+      "n_voxels": 1497067852,
+      "ece": 0.010681999131152713,
+      "ece_above_0.067": 0.12761362195046072,
+      "brier": 0.011679711768691986
+    },
+    {
+      "cohort": "test",
+      "subsets": "missing",
+      "method": "mc8",
+      "region": "ET",
+      "n_voxels": 1497067852,
+      "ece": 0.007689163552655703,
+      "ece_above_0.067": 0.2204224216432148,
+      "brier": 0.00816138643459838
+    },
+    {
+      "cohort": "test",
+      "subsets": "missing",
+      "method": "mc1_ts",
+      "region": "WT",
+      "n_voxels": 1497067852,
+      "ece": 0.02808354511908274,
+      "ece_above_0.067": 0.02965977723782235,
+      "brier": 0.01716610751068145
+    },
+    {
+      "cohort": "test",
+      "subsets": "missing",
+      "method": "mc1_ts",
+      "region": "TC",
+      "n_voxels": 1497067852,
+      "ece": 0.06449449808446013,
+      "ece_above_0.067": 0.07460293187248807,
+      "brier": 0.014411606802853487
+    },
+    {
+      "cohort": "test",
+      "subsets": "missing",
+      "method": "mc1_ts",
+      "region": "ET",
+      "n_voxels": 1497067852,
+      "ece": 0.009859347413058543,
+      "ece_above_0.067": 0.14018856231269922,
+      "brier": 0.0074170047313358925
+    },
+    {
+      "cohort": "test",
+      "subsets": "full",
+      "method": "mc1",
+      "region": "WT",
+      "n_voxels": 106933418,
+      "ece": 0.009176855442766259,
+      "ece_above_0.067": 0.051919757771456305,
+      "brier": 0.010639166455603245
+    },
+    {
+      "cohort": "test",
+      "subsets": "full",
+      "method": "mc1",
+      "region": "TC",
+      "n_voxels": 106933418,
+      "ece": 0.006202445721656135,
+      "ece_above_0.067": 0.08365517582710678,
+      "brier": 0.006659904345884947
+    },
+    {
+      "cohort": "test",
+      "subsets": "full",
+      "method": "mc1",
+      "region": "ET",
+      "n_voxels": 106933418,
+      "ece": 0.0037273930380953358,
+      "ece_above_0.067": 0.16315058581981062,
+      "brier": 0.003985265897110863
+    },
+    {
+      "cohort": "test",
+      "subsets": "full",
+      "method": "tta8",
+      "region": "WT",
+      "n_voxels": 106933418,
+      "ece": 0.007204787596096443,
+      "ece_above_0.067": 0.03997226108154766,
+      "brier": 0.009666938029248767
+    },
+    {
+      "cohort": "test",
+      "subsets": "full",
+      "method": "tta8",
+      "region": "TC",
+      "n_voxels": 106933418,
+      "ece": 0.004926432802494694,
+      "ece_above_0.067": 0.06628647261984313,
+      "brier": 0.00611593453911323
+    },
+    {
+      "cohort": "test",
+      "subsets": "full",
+      "method": "tta8",
+      "region": "ET",
+      "n_voxels": 106933418,
+      "ece": 0.0032446834536888364,
+      "ece_above_0.067": 0.14250058241009939,
+      "brier": 0.0037379795108687763
+    },
+    {
+      "cohort": "test",
+      "subsets": "full",
+      "method": "mc8",
+      "region": "WT",
+      "n_voxels": 106933418,
+      "ece": 0.00886026080412423,
+      "ece_above_0.067": 0.050052614290759245,
+      "brier": 0.010540435580173153
+    },
+    {
+      "cohort": "test",
+      "subsets": "full",
+      "method": "mc8",
+      "region": "TC",
+      "n_voxels": 106933418,
+      "ece": 0.005916759403830645,
+      "ece_above_0.067": 0.08045389309869452,
+      "brier": 0.006527139467376061
+    },
+    {
+      "cohort": "test",
+      "subsets": "full",
+      "method": "mc8",
+      "region": "ET",
+      "n_voxels": 106933418,
+      "ece": 0.003651763118630802,
+      "ece_above_0.067": 0.15915346724060597,
+      "brier": 0.003947466433923246
+    },
+    {
+      "cohort": "test",
+      "subsets": "full",
+      "method": "mc1_ts",
+      "region": "WT",
+      "n_voxels": 106933418,
+      "ece": 0.024709007008458263,
+      "ece_above_0.067": 0.02480914277290516,
+      "brier": 0.010058978459486535
+    },
+    {
+      "cohort": "test",
+      "subsets": "full",
+      "method": "mc1_ts",
+      "region": "TC",
+      "n_voxels": 106933418,
+      "ece": 0.05813060497983233,
+      "ece_above_0.067": 0.07293110352332913,
+      "brier": 0.009225308981871468
+    },
+    {
+      "cohort": "test",
+      "subsets": "full",
+      "method": "mc1_ts",
+      "region": "ET",
+      "n_voxels": 106933418,
+      "ece": 0.009125827065876132,
+      "ece_above_0.067": 0.10739893995773236,
+      "brier": 0.003633701061351042
+    },
+    {
+      "cohort": "external",
+      "subsets": "missing",
+      "method": "mc1",
+      "region": "WT",
+      "n_voxels": 1310505154,
+      "ece": 0.026249700031764273,
+      "ece_above_0.067": 0.112275208697661,
+      "brier": 0.029583951731052553
+    },
+    {
+      "cohort": "external",
+      "subsets": "missing",
+      "method": "mc1",
+      "region": "TC",
+      "n_voxels": 1310505154,
+      "ece": 0.01957292451758097,
+      "ece_above_0.067": 0.21152650455322577,
+      "brier": 0.02069687375553199
+    },
+    {
+      "cohort": "external",
+      "subsets": "missing",
+      "method": "mc1",
+      "region": "ET",
+      "n_voxels": 1310505154,
+      "ece": 0.015324293325991957,
+      "ece_above_0.067": 0.1864074048909195,
+      "brier": 0.015950885212563683
+    },
+    {
+      "cohort": "external",
+      "subsets": "missing",
+      "method": "tta8",
+      "region": "WT",
+      "n_voxels": 1310505154,
+      "ece": 0.019756472865391735,
+      "ece_above_0.067": 0.07527966153248643,
+      "brier": 0.026354900092461244
+    },
+    {
+      "cohort": "external",
+      "subsets": "missing",
+      "method": "tta8",
+      "region": "TC",
+      "n_voxels": 1310505154,
+      "ece": 0.014948401597859016,
+      "ece_above_0.067": 0.13522483134497293,
+      "brier": 0.01820121146475563
+    },
+    {
+      "cohort": "external",
+      "subsets": "missing",
+      "method": "tta8",
+      "region": "ET",
+      "n_voxels": 1310505154,
+      "ece": 0.013588256202383638,
+      "ece_above_0.067": 0.1388731462495587,
+      "brier": 0.014946494803406825
+    },
+    {
+      "cohort": "external",
+      "subsets": "missing",
+      "method": "mc8",
+      "region": "WT",
+      "n_voxels": 1310505154,
+      "ece": 0.024687826582435086,
+      "ece_above_0.067": 0.10304851207863598,
+      "brier": 0.028903346367924982
+    },
+    {
+      "cohort": "external",
+      "subsets": "missing",
+      "method": "mc8",
+      "region": "TC",
+      "n_voxels": 1310505154,
+      "ece": 0.01837113075471554,
+      "ece_above_0.067": 0.18837300115162853,
+      "brier": 0.020063718846318076
+    },
+    {
+      "cohort": "external",
+      "subsets": "missing",
+      "method": "mc8",
+      "region": "ET",
+      "n_voxels": 1310505154,
+      "ece": 0.014943269187894221,
+      "ece_above_0.067": 0.1723351818086485,
+      "brier": 0.015747299322497806
+    },
+    {
+      "cohort": "external",
+      "subsets": "missing",
+      "method": "mc1_ts",
+      "region": "WT",
+      "n_voxels": 1310505154,
+      "ece": 0.02708144504114284,
+      "ece_above_0.067": 0.024095184574915895,
+      "brier": 0.02683787694017016
+    },
+    {
+      "cohort": "external",
+      "subsets": "missing",
+      "method": "mc1_ts",
+      "region": "TC",
+      "n_voxels": 1310505154,
+      "ece": 0.06536100460521248,
+      "ece_above_0.067": 0.07420952215078938,
+      "brier": 0.02146380538871344
+    },
+    {
+      "cohort": "external",
+      "subsets": "missing",
+      "method": "mc1_ts",
+      "region": "ET",
+      "n_voxels": 1310505154,
+      "ece": 0.006706612461005208,
+      "ece_above_0.067": 0.13354717749793626,
+      "brier": 0.014341540354710176
+    },
+    {
+      "cohort": "external",
+      "subsets": "full",
+      "method": "mc1",
+      "region": "WT",
+      "n_voxels": 93607511,
+      "ece": 0.013589737550629463,
+      "ece_above_0.067": 0.06862998954736713,
+      "brier": 0.01598903237059125
+    },
+    {
+      "cohort": "external",
+      "subsets": "full",
+      "method": "mc1",
+      "region": "TC",
+      "n_voxels": 93607511,
+      "ece": 0.011784517395381645,
+      "ece_above_0.067": 0.1673709267495067,
+      "brier": 0.012606246403555019
+    },
+    {
+      "cohort": "external",
+      "subsets": "full",
+      "method": "mc1",
+      "region": "ET",
+      "n_voxels": 93607511,
+      "ece": 0.007775087134066625,
+      "ece_above_0.067": 0.09925811496929901,
+      "brier": 0.008303507807288035
+    },
+    {
+      "cohort": "external",
+      "subsets": "full",
+      "method": "tta8",
+      "region": "WT",
+      "n_voxels": 93607511,
+      "ece": 0.009082876607883835,
+      "ece_above_0.067": 0.04156037677075589,
+      "brier": 0.01368676315659868
+    },
+    {
+      "cohort": "external",
+      "subsets": "full",
+      "method": "tta8",
+      "region": "TC",
+      "n_voxels": 93607511,
+      "ece": 0.008099142282190627,
+      "ece_above_0.067": 0.10503442600115867,
+      "brier": 0.010505695568435487
+    },
+    {
+      "cohort": "external",
+      "subsets": "full",
+      "method": "tta8",
+      "region": "ET",
+      "n_voxels": 93607511,
+      "ece": 0.006393595933142826,
+      "ece_above_0.067": 0.08289051973117255,
+      "brier": 0.007467051292229189
+    },
+    {
+      "cohort": "external",
+      "subsets": "full",
+      "method": "mc8",
+      "region": "WT",
+      "n_voxels": 93607511,
+      "ece": 0.012666421173632415,
+      "ece_above_0.067": 0.06278770948258472,
+      "brier": 0.015525172835546254
+    },
+    {
+      "cohort": "external",
+      "subsets": "full",
+      "method": "mc8",
+      "region": "TC",
+      "n_voxels": 93607511,
+      "ece": 0.010954033759873699,
+      "ece_above_0.067": 0.15259963890270337,
+      "brier": 0.012099247702766672
+    },
+    {
+      "cohort": "external",
+      "subsets": "full",
+      "method": "mc8",
+      "region": "ET",
+      "n_voxels": 93607511,
+      "ece": 0.007542131716232082,
+      "ece_above_0.067": 0.09603834979051135,
+      "brier": 0.008184691732266432
+    },
+    {
+      "cohort": "external",
+      "subsets": "full",
+      "method": "mc1_ts",
+      "region": "WT",
+      "n_voxels": 93607511,
+      "ece": 0.025185489859449954,
+      "ece_above_0.067": 0.021690129810635343,
+      "brier": 0.014936171114016508
+    },
+    {
+      "cohort": "external",
+      "subsets": "full",
+      "method": "mc1_ts",
+      "region": "TC",
+      "n_voxels": 93607511,
+      "ece": 0.062430479447253454,
+      "ece_above_0.067": 0.08301285276631278,
+      "brier": 0.014336896281091407
+    },
+    {
+      "cohort": "external",
+      "subsets": "full",
+      "method": "mc1_ts",
+      "region": "ET",
+      "n_voxels": 93607511,
+      "ece": 0.0073968488766568375,
+      "ece_above_0.067": 0.08143134299432309,
+      "brier": 0.007445010293115107
+    }
+  ],
+  "architectures": [
+    {
+      "model": "NeuroScope U-Net (ours)",
+      "dice_WT": 0.8987638372592465,
+      "dice_WT_ci": [
+        0.8789325917189087,
+        0.9140869361613722
+      ],
+      "dice_TC": 0.8605814367771174,
+      "dice_TC_ci": [
+        0.8272863363139131,
+        0.8897187797488785
+      ],
+      "dice_ET": 0.7743921890182471,
+      "dice_ET_ci": [
+        0.7190945325674806,
+        0.8254191679171305
+      ],
+      "hd95_WT": 11.023827309325899,
+      "hd95_WT_ci": [
+        8.128650492082427,
+        14.31732093672519
+      ],
+      "hd95_TC": 8.453613390990036,
+      "hd95_TC_ci": [
+        5.604301208881452,
+        11.920430954277458
+      ],
+      "hd95_ET": 5.510424250325715,
+      "hd95_ET_ci": [
+        3.262362869783307,
+        8.800240899607262
+      ],
+      "failure_auroc_full": 0.9530516431924883,
+      "dice_WT_1seq": 0.7269607328459253,
+      "dice_WT_2seq": 0.8300892812613352,
+      "dice_WT_3seq": 0.872641037886595
+    },
+    {
+      "model": "Attention U-Net (Oktay 2018)",
+      "dice_WT": 0.8920205780423158,
+      "dice_WT_ci": [
+        0.8726389104575232,
+        0.9079376783108266
+      ],
+      "dice_TC": 0.8299045218094686,
+      "dice_TC_ci": [
+        0.7893518451770672,
+        0.8661829606429141
+      ],
+      "dice_ET": 0.757659472580849,
+      "dice_ET_ci": [
+        0.7014231000764035,
+        0.8104565750280821
+      ],
+      "hd95_WT": 12.779401703023938,
+      "hd95_WT_ci": [
+        9.535726517614606,
+        16.243874125475124
+      ],
+      "hd95_TC": 11.119540314040247,
+      "hd95_TC_ci": [
+        7.685514387380877,
+        15.285315195236706
+      ],
+      "hd95_ET": 7.157573568002057,
+      "hd95_ET_ci": [
+        4.372154931226072,
+        10.915676522058432
+      ],
+      "failure_auroc_full": 0.9768115942028985,
+      "dice_WT_1seq": 0.6694271794816788,
+      "dice_WT_2seq": 0.8019619904842726,
+      "dice_WT_3seq": 0.8564472685903484
+    },
+    {
+      "model": "SegResNet (Myronenko 2018)",
+      "dice_WT": 0.9028815764248684,
+      "dice_WT_ci": [
+        0.8827599222482825,
+        0.9184131923224772
+      ],
+      "dice_TC": 0.8694488066007172,
+      "dice_TC_ci": [
+        0.8405865461027038,
+        0.8949463452047868
+      ],
+      "dice_ET": 0.7728386778393761,
+      "dice_ET_ci": [
+        0.716182407975188,
+        0.8254138753037968
+      ],
+      "hd95_WT": 9.329428245583562,
+      "hd95_WT_ci": [
+        6.650283055181086,
+        12.255185952185153
+      ],
+      "hd95_TC": 8.428388848165383,
+      "hd95_TC_ci": [
+        5.938799221336767,
+        11.185372808567884
+      ],
+      "hd95_ET": 5.6453070515624075,
+      "hd95_ET_ci": [
+        3.090825004703029,
+        8.931813157783266
+      ],
+      "failure_auroc_full": 1.0,
+      "dice_WT_1seq": 0.7580256452615409,
+      "dice_WT_2seq": 0.8419043294945734,
+      "dice_WT_3seq": 0.8795082829931928
+    }
+  ],
+  "baseline_training": {
+    "attention_unet": {
+      "epoch": 20.0,
+      "train_loss": 0.20649795499444,
+      "val_dice_WT": 0.8638283948140045,
+      "val_dice_TC": 0.7192160539566909,
+      "val_dice_ET": 0.6316433829343368,
+      "val_dice_mean": 0.7382292772350106,
+      "epoch_time_s": 116.54651880264282,
+      "lr": 1.2091384859513015e-09
+    },
+    "segresnet": {
+      "epoch": 20.0,
+      "train_loss": 0.1583536579608917,
+      "val_dice_WT": 0.8605528478467004,
+      "val_dice_TC": 0.7491952296671366,
+      "val_dice_ET": 0.7202076389057906,
+      "val_dice_mean": 0.7766519054732092,
+      "epoch_time_s": 154.86652946472168,
+      "lr": 1.2091384859513015e-09
+    }
+  }
+}

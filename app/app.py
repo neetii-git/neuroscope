@@ -752,6 +752,8 @@ def render_evidence():
             t["Failure AUROC (95% CI)"] = t.apply(lambda r: f"{r['auroc']:.3f} ({r['auroc_lo']:.3f} to {r['auroc_hi']:.3f})", axis=1)
             cols = {"label": "Method", "dice_WT_full": "Dice WT (4 seq)", "Failure AUROC (95% CI)": "Failure AUROC (95% CI)", "aurc": "AURC", "infer_s_mean": "Seconds per scan (T4 GPU)"}
             st.dataframe(t[list(cols)].rename(columns=cols).set_index("Method").round(3), width="stretch")
+            st.caption("Most of the failure signal is already in a single pass; the eight-sample methods add about 0.01 AUROC here and about 0.025 on the external cohort. "
+                       "Temperature scaling did not help. MC dropout is kept because it also gives the per-voxel uncertainty map.")
     for coh, title in [("test", "internal test"), ("external", "BraTS-Africa")]:
         fp = os.path.join(EVID_DIR, f"fig_calibration_{coh}.png")
         if os.path.exists(fp):
@@ -789,15 +791,19 @@ if _landing and os.path.isdir(ARGS.demo_dir):
         v = np.transpose(np.asarray(vols[key], np.float32), (2, 1, 0))
         lab = np.transpose(vols["seg"], (2, 1, 0)) if "seg" in vols else None
         return brain_html(v, lab, None, brain_step=3, tumour_step=2, height=600, title="NeuroScope",
-                          subtitle="Brain tumour segmentation from MRI with a built-in measure of how much to trust each result. "
-                                   "Shown: the example patient's FLAIR scan with the expert annotation. Load the example patient to see what the model finds.",
+                          subtitle="Decision support for radiologists: outlines and measures brain tumours on MRI in about a minute, "
+                                   "tracks change between scans, and flags results that need a specialist's review. "
+                                   "Shown: the example patient's FLAIR scan with the expert annotation.",
                           autorotate=True, show_controls=True)
     components.html(_hero_html(ARGS.demo_dir, viz_version=VIZ_VERSION), height=600, scrolling=False)
-    st.caption("Every point is a voxel of the real scan, rendered in your browser. Drag to rotate, scroll to zoom. Research prototype, not a medical device.")
+    st.caption("Every point is a voxel of the real scan, rendered in your browser. Drag to rotate, scroll to zoom.")
+    st.markdown("**Who it is for.** Radiologists and oncology teams: it measures exact 3D tumour volumes in about a minute instead of outlining "
+                "every slice by hand, compares scans over time, and says when its own result should be checked. Patients get a plain-language "
+                "page in the report, but NeuroScope does not replace a doctor's report. Research prototype, not a medical device.")
 else:
     st.title("NeuroScope")
-    st.markdown("Brain tumour segmentation from MRI with a built-in uncertainty estimate, so the result says when it should be checked by a specialist. "
-                "Works with any subset of the four standard sequences. Research prototype, not a medical device.")
+    st.markdown("Decision support for radiologists: brain tumour segmentation and measurement from MRI, with a validated self-check that says "
+                "when a result should be reviewed by a specialist. Works with any subset of the four standard sequences. Research prototype, not a medical device.")
 
 if summary:
     n_test = summary.get("n_test", "?")
@@ -1315,8 +1321,9 @@ else:
 Uncertainty from Monte Carlo dropout: the network runs several times and the disagreement (predictive entropy) is measured.
 The review threshold was fixed on the validation set and never tuned on the test set.
 
-**Limitations.** Trained on BraTS 2020 (adult glioma, skull-stripped, co-registered, 1 mm isotropic). Not validated on other tumour types,
-scanners, children, or post-operative scans. Uncertainty measures model disagreement, not correctness. Research prototype for
+**Limitations.** Trained on BraTS 2020 (adult glioma, skull-stripped, co-registered, 1 mm isotropic) and tested on one external cohort (BraTS-Africa).
+Not validated on other tumour types, raw hospital scans, children, or post-operative scans. Probabilities are not calibrated near the tumour
+boundary, so the uncertainty map is a relative measure of doubt. Uncertainty measures model disagreement, not correctness. Research prototype for
 human-in-the-loop review, not a diagnostic device.
         """)
 

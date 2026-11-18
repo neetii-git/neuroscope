@@ -4,7 +4,17 @@
 
 
 **Modality-robust, uncertainty-aware brain tumour segmentation with a validated human-review gate.**
-Research & decision-support prototype — not a medical device.
+Decision support for radiologists; research prototype, not a medical device.
+
+**Technical report:** [docs/TECHNICAL_REPORT.md](docs/TECHNICAL_REPORT.md) (protocol, confidence intervals, baselines, calibration, external test, limitations)
+
+| Key result | Value |
+|---|---|
+| Whole-tumour Dice, 74 held-out patients | 0.899 (95% CI 0.879 to 0.914) |
+| Failure AUROC across all 15 sequence sets (1,110 cases, 208 failures) | 0.954 (0.936 to 0.971); trivial baselines 0.706 and 0.824 |
+| Failures caught by the frozen review threshold | 191 of 208, specificity 0.82 |
+| External test, BraTS-Africa (60 patients) | Dice 0.876; 226 of 232 failures flagged |
+| Same recipe, other architectures | SegResNet 0.903, Attention U-Net 0.892 (overlapping CIs) |
 
 Clinical MRI exams are often incomplete (a sequence skipped for time, ruined by motion) and acquired on
 scanners unlike the ones research datasets come from. Most published tumour-segmentation models assume all
@@ -175,16 +185,17 @@ Reproduce with `notebooks/kaggle_ablation.ipynb`.
 
 ## Limitations
 
-- Trained and tested on BraTS 2020 adult glioma only; no external dataset, no other tumour types or scanners.
+- Trained on BraTS 2020 adult glioma; one external test cohort (BraTS-Africa). Not validated on raw hospital scans or other tumour types.
+- Voxel probabilities are miscalibrated near the tumour boundary (technical report, Section 5.6).
 - 2D slice-wise inference; no inter-slice context.
-- MC dropout captures epistemic uncertainty approximately; no ensembles.
+- MC dropout adds only about 0.01 AUROC over a single pass on internal data (0.025 externally); no ensembles.
 - Quality checks are heuristics and do not certify diagnostic suitability.
 - Not clinically validated. Outputs require expert review.
 
 ## Future work
 
-3D / nnU-Net backbone · external validation on BraTS-Africa (low-resource scanners) · deep-ensemble baseline ·
-longitudinal volume tracking · ONNX export · FastAPI service + audit log.
+3D / nnU-Net backbone · SegResNet as a drop-in upgrade · MC dropout + TTA combined · region-aware calibration ·
+deep-ensemble baseline · longitudinal validation on LUMIERE · raw hospital DICOM validation · ONNX export.
 
 ## Data
 

@@ -1,0 +1,10 @@
+{
+  "threshold": 0.2980915904045105,
+  "youden_j": 1.0,
+  "n_fail": 2,
+  "n_total": 37,
+  "rule": "youden",
+  "tau_fail": 0.75,
+  "chosen_on": "val",
+  "n_val": 37
+}
