@@ -245,7 +245,7 @@ python scripts/evaluate.py --cache cache --ckpt runs/base/best.pt --out runs/bas
 python analysis/failure_detection.py hosting/data/runs/base/results docs/evidence
 python scripts/evidence.py --cache cache --ckpt hosting/data/runs/base/best.pt --ssa-root <BraTS-Africa dir> --out evidence
 python scripts/train.py --cache cache --out runs/segresnet --arch segresnet   # baselines: segresnet, attention_unet
-python analysis/evidence_report.py <evidence artifacts> docs/evidence      # layout as in docs/evidence/raw
+python analysis/evidence_report.py <unzipped evidence_artifacts.zip from the Kaggle notebook> docs/evidence
 ```
 
 Kaggle notebooks: `notebooks/kaggle_train_eval.ipynb` (main model), `notebooks/kaggle_ablation.ipynb` (ablations), `notebooks/kaggle_evidence.ipynb` (Sections 5.2, 5.5 to 5.7, 5.9). Trained weights: `hosting/data/runs/base/best.pt`.
